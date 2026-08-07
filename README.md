@@ -96,16 +96,3 @@ EML-Shipping_Tracker/
 ├── docker-compose.yml   # PostgreSQL
 └── .env.example         # Variables de entorno
 ```
-
-## Funcionalidades principales
-
-- **Kanban de contenedores** — Arrastrar y soltar para cambiar estados
-- **Grupos de contenedores** — Agrupar múltiples contenedores para moverlos juntos
-- **Mapa 2D** — OpenStreetMap con marcadores de ubicación arrastrables
-- **Globo 3D** — Visualización global con nubes animadas y rutas
-- **Códigos QR** — Generación y escaneo por webcam
-- **Fotos y documentos** — Adjuntar archivos a cada contenedor
-- **Reportes personalizables** — Vistas con gráficos de barras, torta y líneas
-- **Exportación Excel/PDF** — Datos del contenedor y movimientos
-- **Modo oscuro** — Toggle en la barra lateral
-- **Gestión de usuarios** — Admin puede crear usuarios y gestionar permisos
