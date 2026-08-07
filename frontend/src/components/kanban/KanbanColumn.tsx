@@ -59,7 +59,7 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        "flex w-72 shrink-0 flex-col rounded-lg border bg-card",
+        "flex w-72 shrink-0 flex-col rounded-lg border bg-card h-full",
         isOver && "border-primary bg-primary/5"
       )}
     >
@@ -73,7 +73,7 @@ export function KanbanColumn({
         </span>
       </div>
       <SortableContext items={allIds} strategy={verticalListSortingStrategy}>
-        <div ref={setNodeRef} className="flex-1 space-y-2 overflow-y-auto p-3">
+        <div ref={setNodeRef} className="flex-1 space-y-2 overflow-y-auto p-3 h-full">
           {contenedores.map((cont) => (
             <div key={cont.id} className={cn("flex items-start gap-1", selectionMode && "cursor-pointer")}>
               {selectionMode && (

@@ -352,50 +352,66 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
       >
         <div className="flex flex-col h-full">
           <TrashDropZone active={activeDragId !== null} />
-          <div className="flex-1 min-h-0 overflow-auto">
-            <div className="flex gap-3 min-h-full pb-4">
-              {estados.map((estado) => (
-                <KanbanColumn
-                  key={estado.id}
-                  estado={estado}
-                  contenedores={filteredContenedores.filter((c) =>
-                    c.estado_id === estado.id && !groupedContIds.has(c.id)
-                  )}
-                  grupos={filteredGrupos.filter((g) => g.estado_id === estado.id)}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={onToggleSelect}
-                  onDeleteGroup={deleteGrupo}
-                  onRemoveFromGroup={removeFromGroup}
-                  groupTargetId={
-                    activeDragId && /^\d+$/.test(activeDragId) && overDragId && /^\d+$/.test(overDragId) && activeDragId !== overDragId
-                      ? Number(overDragId)
-                      : null
-                  }
-                />
-              ))}
-              {(sinEstadoContenedores.length > 0 || sinEstadoGrupos.length > 0) && (
-                <KanbanColumn
-                  key="sin-estado"
-                  estado={{ id: -1, nombre: "Sin Estado", color: "#ef4444" }}
-                  contenedores={sinEstadoContenedores.filter((c) => !groupedContIds.has(c.id))}
-                  grupos={sinEstadoGrupos}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={onToggleSelect}
-                  onDeleteGroup={deleteGrupo}
-                  onRemoveFromGroup={removeFromGroup}
-                  groupTargetId={null}
-                  onCardClick={(cont) => {
-                    setEditingSinEstado(cont);
-                    setSinEstadoNew("");
-                  }}
-                  onGroupClick={(grupo) => {
-                    setEditingSinEstadoGrupo(grupo);
-                    setSinEstadoGrupoNew("");
-                  }}
-                />
-              )}
+          <div className="flex-1 min-h-0 overflow-auto h-full">
+            <div className="flex gap-3 h-full pb-4">
+              {(() => {
+                const columns: React.ReactElement[] = estados.map((estado) => (
+                  <KanbanColumn
+                    key={estado.id}
+                    estado={estado}
+                    contenedores={filteredContenedores.filter((c) =>
+                      c.estado_id === estado.id && !groupedContIds.has(c.id)
+                    )}
+                    grupos={filteredGrupos.filter((g) => g.estado_id === estado.id)}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={onToggleSelect}
+                    onDeleteGroup={deleteGrupo}
+                    onRemoveFromGroup={removeFromGroup}
+                    groupTargetId={
+                      activeDragId && /^\d+$/.test(activeDragId) && overDragId && /^\d+$/.test(overDragId) && activeDragId !== overDragId
+                        ? Number(overDragId)
+                        : null
+                    }
+                  />
+                ));
+                if (sinEstadoContenedores.length > 0 || sinEstadoGrupos.length > 0) {
+                  columns.push(
+                    <KanbanColumn
+                      key="sin-estado"
+                      estado={{ id: -1, nombre: "Sin Estado", color: "#ef4444" }}
+                      contenedores={sinEstadoContenedores.filter((c) => !groupedContIds.has(c.id))}
+                      grupos={sinEstadoGrupos}
+                      selectionMode={selectionMode}
+                      selectedIds={selectedIds}
+                      onToggleSelect={onToggleSelect}
+                      onDeleteGroup={deleteGrupo}
+                      onRemoveFromGroup={removeFromGroup}
+                      groupTargetId={null}
+                      onCardClick={(cont) => {
+                        setEditingSinEstado(cont);
+                        setSinEstadoNew("");
+                      }}
+                      onGroupClick={(grupo) => {
+                        setEditingSinEstadoGrupo(grupo);
+                        setSinEstadoGrupoNew("");
+                      }}
+                    />
+                  );
+                }
+                return columns.map((col, i) => {
+                  const isFirst = i === 0;
+                  const isLast = i === columns.length - 1;
+                  return (
+                    <div
+                      key={col.key}
+                      className={cn("h-full shrink-0", isFirst && "ml-4", isLast && "mr-4")}
+                    >
+                      {col}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
