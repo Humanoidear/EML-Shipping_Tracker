@@ -1,7 +1,5 @@
 # EML Shipping Tracker
 
-Aplicación de escritorio (Electron) para el seguimiento de rutas de contenedores de transporte marítimo. Utiliza un tablero Kanban con arrastrar y soltar para gestionar el estado de los contenedores, visualización de rutas en mapa 2D (OpenStreetMap) y globo 3D, generación de códigos QR, y panel de administración con reportes personalizables.
-
 ## Requisitos
 
 - **Docker** (para PostgreSQL)
