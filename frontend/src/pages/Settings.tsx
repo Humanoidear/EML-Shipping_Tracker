@@ -362,6 +362,7 @@ function EstadoFormDialog({
 function ClientesSettings() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
 
   useEffect(() => {
     api.get("/clientes").then((res) => setClientes(res.data));
@@ -406,13 +407,32 @@ function ClientesSettings() {
                 <p className="font-medium">{cliente.nombre}</p>
                 {cliente.email && <p className="text-xs text-muted-foreground">{cliente.email}</p>}
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(cliente.id)}>
-                <Trash2 className="h-3 w-3 text-destructive" />
-              </Button>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => setEditingCliente(cliente)}>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(cliente.id)}>
+                  <Trash2 className="h-3 w-3 text-destructive" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       </CardContent>
+
+      <Dialog open={!!editingCliente} onOpenChange={() => setEditingCliente(null)}>
+        <DialogContent className="sm:max-w-sm">
+          {editingCliente && (
+            <ClienteFormDialog
+              cliente={editingCliente}
+              onSaved={(updated) => {
+                setClientes((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+                setEditingCliente(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

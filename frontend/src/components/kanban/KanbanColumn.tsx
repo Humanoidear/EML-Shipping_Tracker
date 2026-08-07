@@ -40,11 +40,14 @@ interface Props {
   onDeleteGroup: (grupoId: number) => void;
   onRemoveFromGroup: (grupoId: number, contId: number) => void;
   groupTargetId: number | null;
+  onCardClick?: (cont: Contenedor) => void;
+  onGroupClick?: (grupo: Grupo) => void;
 }
 
 export function KanbanColumn({
   estado, contenedores, grupos,
   selectionMode, selectedIds, onToggleSelect, onDeleteGroup, onRemoveFromGroup, groupTargetId,
+  onCardClick, onGroupClick,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: `estado-${estado.id}` });
 
@@ -92,6 +95,7 @@ export function KanbanColumn({
                   contenedor={cont}
                   disableClick={selectionMode}
                   isGroupTarget={groupTargetId === cont.id}
+                  onClickOverride={onCardClick ? () => onCardClick(cont) : undefined}
                 />
               </div>
             </div>
@@ -100,7 +104,11 @@ export function KanbanColumn({
           {grupos.map((grupo) => (
             <div key={`group-${grupo.id}`}>
               <Draggable id={`group-${grupo.id}`}>
-                <GrupoCard grupo={grupo} onRemoveContainer={(contId) => onRemoveFromGroup(grupo.id, contId)} />
+                <GrupoCard
+                  grupo={grupo}
+                  onRemoveContainer={(contId) => onRemoveFromGroup(grupo.id, contId)}
+                  onClickOverride={onGroupClick ? () => onGroupClick(grupo) : undefined}
+                />
               </Draggable>
               <div className="flex justify-end gap-1 px-2 pb-1">
                 <button

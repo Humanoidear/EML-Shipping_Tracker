@@ -48,6 +48,8 @@ def create_contenedor(current_user):
     data = request.get_json()
     if Contenedor.query.filter_by(matricula=data["matricula"]).first():
         return jsonify({"error": "Ya existe un contenedor con esa matrícula"}), 400
+    if not data.get("estado_id"):
+        return jsonify({"error": "Debes seleccionar un estado inicial"}), 400
     contenedor = Contenedor(
         matricula=data["matricula"],
         cliente_id=data.get("cliente_id"),
@@ -117,8 +119,21 @@ def update_contenedor(current_user, contenedor_id):
 @login_required
 def delete_contenedor(current_user, contenedor_id):
     contenedor = Contenedor.query.get_or_404(contenedor_id)
+
+    for grupo in list(contenedor.grupos):
+        grupo.contenedores.remove(contenedor)
+        if len(grupo.contenedores) == 0:
+            db.session.delete(grupo)
+
+    for adjunto in list(contenedor.adjuntos):
+        db.session.delete(adjunto)
+
     db.session.delete(contenedor)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Error al eliminar el contenedor"}), 500
     return jsonify({"message": "Contenedor eliminado"})
 
 

@@ -19,10 +19,12 @@ export function ContenedorCard({
   contenedor,
   disableClick,
   isGroupTarget = false,
+  onClickOverride,
 }: {
   contenedor: Contenedor;
   disableClick?: boolean;
   isGroupTarget?: boolean;
+  onClickOverride?: () => void;
 }) {
   const navigate = useNavigate();
   const {
@@ -52,7 +54,10 @@ export function ContenedorCard({
         contenedor.mercancia_peligrosa && "border-orange-500"
       )}
       style={style}
-      onClick={() => { if (!disableClick) navigate(`/contenedores/${contenedor.id}`); }}
+      onClick={() => {
+        if (onClickOverride) { onClickOverride(); return; }
+        if (!disableClick) navigate(`/contenedores/${contenedor.id}`);
+      }}
     >
       {contenedor.mercancia_peligrosa && (
         <div

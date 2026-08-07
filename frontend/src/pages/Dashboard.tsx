@@ -51,10 +51,11 @@ function FilterPopover({
     (filters.matricula ? 1 : 0) +
     (filters.clienteId !== "todos" ? 1 : 0) +
     (filters.tipoIso !== "todos" ? 1 : 0) +
-    (filters.soloPeligrosa ? 1 : 0);
+    (filters.soloPeligrosa ? 1 : 0) +
+    (filters.grupoNombre ? 1 : 0);
 
   const clearFilters = () => {
-    setFilters({ matricula: "", clienteId: "todos", tipoIso: "todos", soloPeligrosa: false });
+    setFilters({ matricula: "", clienteId: "todos", tipoIso: "todos", soloPeligrosa: false, grupoNombre: "" });
   };
 
   return (
@@ -89,6 +90,15 @@ function FilterPopover({
                   placeholder="Buscar..."
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nombre de grupo</Label>
+              <Input
+                className="h-8 text-sm"
+                value={filters.grupoNombre}
+                onChange={(e) => setFilters((f) => ({ ...f, grupoNombre: e.target.value }))}
+                placeholder="Buscar grupo..."
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Cliente</Label>
@@ -147,6 +157,7 @@ export default function Dashboard() {
     clienteId: "todos",
     tipoIso: "todos",
     soloPeligrosa: false,
+    grupoNombre: "",
   });
 
   useEffect(() => {
@@ -310,6 +321,10 @@ function CreateContenedorDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!estadoId) {
+      alert("Debes seleccionar un estado inicial");
+      return;
+    }
     setLoading(true);
     try {
       await api.post("/contenedores", {
@@ -382,7 +397,7 @@ function CreateContenedorDialog({
           <div className="space-y-2"><Label>Destino</Label><Input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Colón - Mariel" /></div>
         </div>
         <div className="space-y-2">
-          <Label>Estado inicial</Label>
+          <Label>Estado inicial *</Label>
           <Select value={estadoId} onValueChange={setEstadoId}>
             <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
             <SelectContent>
@@ -391,6 +406,7 @@ function CreateContenedorDialog({
               ))}
             </SelectContent>
           </Select>
+          {!estadoId && <p className="text-xs text-orange-500">El estado es obligatorio</p>}
         </div>
         <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={peso} onChange={(e) => setPeso(e.target.value)} /></div>
         <div className="space-y-2"><Label>Mercancía</Label><Input value={mercancia} onChange={(e) => setMercancia(e.target.value)} /></div>

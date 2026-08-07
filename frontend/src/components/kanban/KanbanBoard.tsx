@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Estado {
   id: number;
@@ -43,6 +45,7 @@ export interface KanbanFilters {
   clienteId: string;
   tipoIso: string;
   soloPeligrosa: boolean;
+  grupoNombre: string;
 }
 
 interface Props {
@@ -68,6 +71,10 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
   const [deletingGrupoId, setDeletingGrupoId] = useState<number | null>(null);
   const [groupingPair, setGroupingPair] = useState<{ sourceId: number; targetId: number } | null>(null);
   const [groupName, setGroupName] = useState("");
+  const [editingSinEstado, setEditingSinEstado] = useState<Contenedor | null>(null);
+  const [sinEstadoNew, setSinEstadoNew] = useState<string>("");
+  const [editingSinEstadoGrupo, setEditingSinEstadoGrupo] = useState<Grupo | null>(null);
+  const [sinEstadoGrupoNew, setSinEstadoGrupoNew] = useState<string>("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -94,14 +101,55 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
   }, [grupos]);
 
   const filteredContenedores = useMemo(() => {
-    return contenedores.filter((c) => {
-      if (filters.matricula && !c.matricula.toUpperCase().includes(filters.matricula.toUpperCase())) return false;
-      if (filters.clienteId && filters.clienteId !== "todos" && c.cliente_id?.toString() !== filters.clienteId) return false;
-      if (filters.tipoIso && filters.tipoIso !== "todos" && c.tipo_iso !== filters.tipoIso) return false;
-      if (filters.soloPeligrosa && !c.mercancia_peligrosa) return false;
-      return true;
-    });
+    return contenedores.filter((c) => containerMatchesFilter(c, filters));
   }, [contenedores, filters]);
+
+  const filteredGrupos = useMemo(() => {
+    return grupos.filter((g) => {
+      if (filters.grupoNombre && !g.nombre.toUpperCase().includes(filters.grupoNombre.toUpperCase())) {
+        return false;
+      }
+      return g.contenedores.some((c) => containerMatchesFilter(c, filters));
+    });
+  }, [grupos, filters]);
+
+  const sinEstadoContenedores = useMemo(() => {
+    const validIds = new Set(estados.map((e) => e.id));
+    return filteredContenedores.filter((c) => !c.estado_id || !validIds.has(c.estado_id));
+  }, [filteredContenedores, estados]);
+
+  const sinEstadoGrupos = useMemo(() => {
+    const validIds = new Set(estados.map((e) => e.id));
+    return filteredGrupos.filter((g) => !g.estado_id || !validIds.has(g.estado_id));
+  }, [filteredGrupos, estados]);
+
+  const handleAssignSinEstado = async () => {
+    if (!editingSinEstado || !sinEstadoNew) return;
+    try {
+      await api.put(`/contenedores/${editingSinEstado.id}`, {
+        estado_id: parseInt(sinEstadoNew),
+      });
+      setEditingSinEstado(null);
+      setSinEstadoNew("");
+      fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error al asignar estado");
+    }
+  };
+
+  const handleAssignSinEstadoGrupo = async () => {
+    if (!editingSinEstadoGrupo || !sinEstadoGrupoNew) return;
+    try {
+      await api.put(`/grupos/${editingSinEstadoGrupo.id}`, {
+        estado_id: parseInt(sinEstadoGrupoNew),
+      });
+      setEditingSinEstadoGrupo(null);
+      setSinEstadoGrupoNew("");
+      fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error al asignar estado");
+    }
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(event.active.id as string);
@@ -313,7 +361,7 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
                   contenedores={filteredContenedores.filter((c) =>
                     c.estado_id === estado.id && !groupedContIds.has(c.id)
                   )}
-                  grupos={grupos.filter((g) => g.estado_id === estado.id)}
+                  grupos={filteredGrupos.filter((g) => g.estado_id === estado.id)}
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={onToggleSelect}
@@ -326,6 +374,28 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
                   }
                 />
               ))}
+              {(sinEstadoContenedores.length > 0 || sinEstadoGrupos.length > 0) && (
+                <KanbanColumn
+                  key="sin-estado"
+                  estado={{ id: -1, nombre: "Sin Estado", color: "#ef4444" }}
+                  contenedores={sinEstadoContenedores.filter((c) => !groupedContIds.has(c.id))}
+                  grupos={sinEstadoGrupos}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  onToggleSelect={onToggleSelect}
+                  onDeleteGroup={deleteGrupo}
+                  onRemoveFromGroup={removeFromGroup}
+                  groupTargetId={null}
+                  onCardClick={(cont) => {
+                    setEditingSinEstado(cont);
+                    setSinEstadoNew("");
+                  }}
+                  onGroupClick={(grupo) => {
+                    setEditingSinEstadoGrupo(grupo);
+                    setSinEstadoGrupoNew("");
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -402,6 +472,60 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!editingSinEstado} onOpenChange={(open) => !open && setEditingSinEstado(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Asignar estado</DialogTitle>
+            <DialogDescription>
+              {editingSinEstado ? `El contenedor ${editingSinEstado.matricula} no tiene un estado válido.` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Estado *</Label>
+            <Select value={sinEstadoNew} onValueChange={setSinEstadoNew}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+              <SelectContent>
+                {estados.map((e) => (
+                  <SelectItem key={e.id} value={e.id.toString()}>{e.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingSinEstado(null)}>Cancelar</Button>
+            <Button onClick={handleAssignSinEstado} disabled={!sinEstadoNew}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingSinEstadoGrupo} onOpenChange={(open) => !open && setEditingSinEstadoGrupo(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Asignar estado al grupo</DialogTitle>
+            <DialogDescription>
+              {editingSinEstadoGrupo
+                ? `El grupo "${editingSinEstadoGrupo.nombre}" (${editingSinEstadoGrupo.contenedores.length} contenedores) no tiene un estado válido.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Estado *</Label>
+            <Select value={sinEstadoGrupoNew} onValueChange={setSinEstadoGrupoNew}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+              <SelectContent>
+                {estados.map((e) => (
+                  <SelectItem key={e.id} value={e.id.toString()}>{e.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingSinEstadoGrupo(null)}>Cancelar</Button>
+            <Button onClick={handleAssignSinEstadoGrupo} disabled={!sinEstadoGrupoNew}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -437,6 +561,14 @@ function GrupoCardPreview({ grupo }: { grupo: Grupo }) {
       </div>
     </div>
   );
+}
+
+function containerMatchesFilter(c: Contenedor, filters: KanbanFilters): boolean {
+  if (filters.matricula && !c.matricula.toUpperCase().includes(filters.matricula.toUpperCase())) return false;
+  if (filters.clienteId && filters.clienteId !== "todos" && c.cliente_id?.toString() !== filters.clienteId) return false;
+  if (filters.tipoIso && filters.tipoIso !== "todos" && c.tipo_iso !== filters.tipoIso) return false;
+  if (filters.soloPeligrosa && !c.mercancia_peligrosa) return false;
+  return true;
 }
 
 function _findParentEstado(

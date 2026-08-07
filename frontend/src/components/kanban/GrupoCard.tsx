@@ -25,9 +25,11 @@ const MAX_VISIBLE = 4;
 export function GrupoCard({
   grupo,
   onRemoveContainer,
+  onClickOverride,
 }: {
   grupo: Grupo;
   onRemoveContainer?: (contId: number) => void;
+  onClickOverride?: () => void;
 }) {
   const navigate = useNavigate();
   const visible = grupo.contenedores.slice(0, MAX_VISIBLE);
@@ -43,7 +45,10 @@ export function GrupoCard({
 
   return (
     <div
-      onClick={() => navigate(`/contenedores/${grupo.contenedores[0]?.id}`)}
+      onClick={() => {
+        if (onClickOverride) { onClickOverride(); return; }
+        navigate(`/contenedores/${grupo.contenedores[0]?.id}`);
+      }}
       className={cn(
         "relative cursor-pointer rounded-md border-2 border-dashed bg-card p-3 shadow-sm transition-shadow hover:shadow-md",
         hasPeligrosa && "border-orange-500"
