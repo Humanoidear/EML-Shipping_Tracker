@@ -17,18 +17,21 @@ def get_grupos(current_user):
 @login_required
 def create_grupo(current_user):
     data = request.get_json()
+    cont_ids = data.get('contenedor_ids', [])
+    first_container = Contenedor.query.get(cont_ids[0]) if cont_ids else None
+    estado_id = data.get('estado_id') or (first_container.estado_id if first_container else None)
     grupo = Grupo(
         nombre=data.get('nombre', 'Grupo sin nombre'),
-        estado_id=data.get('estado_id'),
+        estado_id=estado_id,
         ubicacion_lat=data.get('ubicacion_lat'),
         ubicacion_lng=data.get('ubicacion_lng'),
     )
-    cont_ids = data.get('contenedor_ids', [])
     for cid in cont_ids:
         cont = Contenedor.query.get(cid)
         if cont:
             grupo.contenedores.append(cont)
-            cont.estado_id = grupo.estado_id
+            if grupo.estado_id is not None:
+                cont.estado_id = grupo.estado_id
     db.session.add(grupo)
     db.session.commit()
     return jsonify(grupo.to_dict()), 201
@@ -93,6 +96,8 @@ def add_to_group(current_user, grupo_id, cont_id):
     cont = Contenedor.query.get_or_404(cont_id)
     if cont not in grupo.contenedores:
         grupo.contenedores.append(cont)
+        if grupo.estado_id is None:
+            grupo.estado_id = cont.estado_id
         cont.estado_id = grupo.estado_id
         if grupo.ubicacion_lat:
             cont.ubicacion_lat = grupo.ubicacion_lat

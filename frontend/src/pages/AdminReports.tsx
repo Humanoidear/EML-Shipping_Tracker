@@ -7,29 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  BarChart3,
-  PieChart,
-  LineChart,
-  Plus,
-  Pencil,
-  Trash2,
-  Eye,
+  BarChart3, PieChart, LineChart, Plus, Pencil, Trash2, Eye,
+  GripVertical,
 } from "lucide-react";
 import {
-  LineChart as ReLineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as ReTooltip,
-  ResponsiveContainer,
+  DndContext, useSensors, PointerSensor, useSensor,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, verticalListSortingStrategy, horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  LineChart as ReLineChart, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer,
 } from "recharts";
 
 interface VistaConfig {
@@ -49,6 +44,11 @@ interface PreviewPoint {
   color?: string;
 }
 
+interface VistaChart extends Vista {
+  data: PreviewPoint[];
+  loading: boolean;
+}
+
 const CHART_TYPE_OPTIONS = [
   { value: "bar", label: "Barra" },
   { value: "pie", label: "Torta" },
@@ -65,14 +65,10 @@ const GROUP_BY_OPTIONS = [
 
 function chartTypeIcon(type: string) {
   switch (type) {
-    case "bar":
-      return <BarChart3 className="h-6 w-6" />;
-    case "pie":
-      return <PieChart className="h-6 w-6" />;
-    case "line":
-      return <LineChart className="h-6 w-6" />;
-    default:
-      return <BarChart3 className="h-6 w-6" />;
+    case "bar": return <BarChart3 className="h-6 w-6" />;
+    case "pie": return <PieChart className="h-6 w-6" />;
+    case "line": return <LineChart className="h-6 w-6" />;
+    default: return <BarChart3 className="h-6 w-6" />;
   }
 }
 
@@ -84,106 +80,129 @@ function groupByLabel(value: string) {
   return GROUP_BY_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
-function PreviewChart({
-  type,
-  data,
-  title,
-}: {
-  type: string;
-  data: PreviewPoint[];
-  title: string;
-}) {
-  if (type === "line") {
+function ChartWidget({ vista }: { vista: VistaChart }) {
+  if (vista.loading) {
     return (
       <div className="rounded-lg border bg-card p-4">
-        <h3 className="mb-4 text-sm font-semibold">{title}</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <ReLineChart data={data}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="hsl(217 19% 24%)"
-            />
-            <XAxis
-              dataKey="name"
-              tick={{ fontSize: 12, fill: "hsl(215 20% 65%)" }}
-            />
-            <YAxis
-              tick={{ fontSize: 12, fill: "hsl(215 20% 65%)" }}
-            />
+        <p className="text-xs text-muted-foreground">Cargando...</p>
+      </div>
+    );
+  }
+  if (!vista.data || vista.data.length === 0) {
+    return (
+      <div className="rounded-lg border bg-card p-4">
+        <p className="text-xs text-muted-foreground">Sin datos</p>
+      </div>
+    );
+  }
+
+  if (vista.config.chartType === "line") {
+    return (
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="mb-2 text-sm font-semibold">{vista.nombre}</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <ReLineChart data={vista.data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
             <ReTooltip
-              contentStyle={{
-                backgroundColor: "hsl(220 20% 12%)",
-                border: "1px solid hsl(217 19% 24%)",
-                borderRadius: "8px",
-              }}
-              labelStyle={{ color: "hsl(210 40% 98%)" }}
+              contentStyle={{ backgroundColor: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--popover-foreground))" }}
             />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={{ fill: "#3b82f6" }}
-            />
+            <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
           </ReLineChart>
         </ResponsiveContainer>
       </div>
     );
   }
+
   return (
-    <ReportCharts type={type as "bar" | "pie"} title={title} data={data} />
+    <ReportCharts
+      type={vista.config.chartType as "bar" | "pie"}
+      title={vista.nombre}
+      data={vista.data.map((d) => ({ name: d.name, value: d.value, color: d.color }))}
+      height={250}
+    />
   );
 }
+
+const DASHBOARD_ID = "mis-vistas";
 
 export default function AdminReports() {
   const [vistas, setVistas] = useState<Vista[]>([]);
   const [vistasLoading, setVistasLoading] = useState(true);
-
-  const [vistaTab, setVistaTab] = useState("lista");
+  const [vistaTab, setVistaTab] = useState("dashboard");
   const [editId, setEditId] = useState<number | null>(null);
-
   const [nombre, setNombre] = useState("");
   const [chartType, setChartType] = useState("bar");
   const [groupBy, setGroupBy] = useState("estado");
-
   const [previewData, setPreviewData] = useState<PreviewPoint[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [dashboardVistas, setDashboardVistas] = useState<VistaChart[]>([]);
 
-  const [estadoDist, setEstadoDist] = useState<
-    { nombre: string; color: string; cantidad: number }[]
-  >([]);
-  const [tiposIso, setTiposIso] = useState<
-    { tipo: string; cantidad: number }[]
-  >([]);
-  const [peligrosa, setPeligrosa] = useState<
-    { tipo: string; cantidad: number }[]
-  >([]);
-  const [actividad, setActividad] = useState<any[]>([]);
-
-  const fetchVistas = () => {
+  const fetchVistas = async () => {
     setVistasLoading(true);
-    api
-      .get("/vistas")
-      .then((res) => setVistas(res.data))
-      .catch(() => {})
-      .finally(() => setVistasLoading(false));
+    try {
+      const res = await api.get("/vistas");
+      setVistas(res.data);
+    } catch {} finally {
+      setVistasLoading(false);
+    }
   };
 
-  useEffect(() => {
-    fetchVistas();
-    Promise.all([
-      api.get("/reportes/estados-distribucion"),
-      api.get("/reportes/tipos-iso"),
-      api.get("/reportes/peligrosa"),
-      api.get("/reportes/actividad"),
-    ]).then(([estRes, isoRes, pelRes, actRes]) => {
-      setEstadoDist(estRes.data);
-      setTiposIso(isoRes.data);
-      setPeligrosa(pelRes.data);
-      setActividad(actRes.data);
-    });
-  }, []);
+  const fetchChartData = async (v: Vista): Promise<PreviewPoint[]> => {
+    try {
+      const res = await api.post("/vistas/preview", { config: v.config });
+      return res.data.data ?? [];
+    } catch {
+      return [];
+    }
+  };
+
+  useEffect(() => { fetchVistas(); }, []);
+
+  const addToDashboard = async (vista: Vista) => {
+    if (dashboardVistas.some((dv) => dv.id === vista.id)) return;
+    const data = await fetchChartData(vista);
+    setDashboardVistas((prev) => [...prev, { ...vista, data, loading: false }]);
+  };
+
+  const removeFromDashboard = (id: number) => {
+    setDashboardVistas((prev) => prev.filter((dv) => dv.id !== id));
+  };
+
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Dragged from vistas list into dashboard
+    if (activeId.startsWith("vista-")) {
+      const vistaId = parseInt(activeId.replace("vista-", ""));
+      const vista = vistas.find((v) => v.id === vistaId);
+      if (vista && (overId === DASHBOARD_ID || overId.startsWith("chart-"))) {
+        addToDashboard(vista);
+      }
+      return;
+    }
+
+    // Rearranging charts within dashboard
+    if (activeId.startsWith("chart-") && overId.startsWith("chart-")) {
+      const oldIndex = dashboardVistas.findIndex((dv) => `chart-${dv.id}` === activeId);
+      const newIndex = dashboardVistas.findIndex((dv) => `chart-${dv.id}` === overId);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const items = Array.from(dashboardVistas);
+        const [removed] = items.splice(oldIndex, 1);
+        items.splice(newIndex, 0, removed);
+        setDashboardVistas(items);
+      }
+    }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   const resetForm = () => {
     setEditId(null);
@@ -206,21 +225,17 @@ export default function AdminReports() {
     try {
       await api.delete(`/vistas/${id}`);
       setVistas((prev) => prev.filter((v) => v.id !== id));
+      setDashboardVistas((prev) => prev.filter((dv) => dv.id !== id));
     } catch {}
   };
 
   const handlePreview = async () => {
     setPreviewLoading(true);
     try {
-      const res = await api.post("/vistas/preview", {
-        config: { chartType, groupBy },
-      });
+      const res = await api.post("/vistas/preview", { config: { chartType, groupBy } });
       setPreviewData(res.data.data ?? []);
-    } catch {
-      setPreviewData(null);
-    } finally {
-      setPreviewLoading(false);
-    }
+    } catch { setPreviewData(null); }
+    finally { setPreviewLoading(false); }
   };
 
   const handleSave = async () => {
@@ -235,7 +250,7 @@ export default function AdminReports() {
       }
       resetForm();
       fetchVistas();
-      setVistaTab("lista");
+      setVistaTab("dashboard");
     } catch {} finally {
       setSaveLoading(false);
     }
@@ -245,160 +260,117 @@ export default function AdminReports() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Reportes y Estadísticas</h1>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Vistas Personalizadas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={vistaTab} onValueChange={setVistaTab}>
-            <TabsList>
-              <TabsTrigger value="lista">Vistas</TabsTrigger>
-              <TabsTrigger value="nueva">
-                {editId ? "Editar Vista" : "Nueva Vista"}
-              </TabsTrigger>
-            </TabsList>
+      <Tabs value={vistaTab} onValueChange={setVistaTab}>
+        <TabsList>
+          <TabsTrigger value="dashboard">Mis Vistas</TabsTrigger>
+          <TabsTrigger value="nueva">{editId ? "Editar Vista" : "Nueva Vista"}</TabsTrigger>
+          <TabsTrigger value="predefinidos">Reportes Predefinidos</TabsTrigger>
+        </TabsList>
 
-            <TabsContent value="lista">
-              {vistasLoading ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Cargando vistas...
+        <TabsContent value="dashboard">
+          <div className="flex gap-6" style={{ minHeight: 500 }}>
+            <div className="w-64 shrink-0">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Vistas disponibles</CardTitle>
+                </CardHeader>
+                <CardContent className="p-2">
+                  <div className="space-y-1 max-h-[500px] overflow-y-auto">
+                    {vistasLoading ? (
+                      <p className="text-xs text-muted-foreground p-2">Cargando...</p>
+                    ) : vistas.length === 0 ? (
+                      <p className="text-xs text-muted-foreground p-2">Sin vistas</p>
+                    ) : (
+                      vistas.map((vista) => {
+                        const isOnDashboard = dashboardVistas.some((dv) => dv.id === vista.id);
+                        return (
+                          <div
+                            key={vista.id}
+                            className="flex items-center gap-2 rounded-md border p-2 text-xs bg-card hover:bg-accent cursor-pointer"
+                            onClick={() => {
+                              if (isOnDashboard) removeFromDashboard(vista.id);
+                              else addToDashboard(vista);
+                            }}
+                          >
+                            {chartTypeIcon(vista.config.chartType)}
+                            <span className="flex-1 truncate font-medium">{vista.nombre}</span>
+                            {isOnDashboard && (
+                              <span className="text-[10px] text-primary font-medium">Añadida</span>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); handleEdit(vista); }}>
+                              <Pencil className="h-2.5 w-2.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); handleDelete(vista.id); }}>
+                              <Trash2 className="h-2.5 w-2.5 text-destructive" />
+                            </Button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="flex-1">
+              <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 min-h-[200px]">
+                <p className="text-xs text-muted-foreground mb-4">
+                  Haz clic en una vista para añadirla al panel
                 </p>
-              ) : vistas.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-12">
-                  <Eye className="h-10 w-10 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    No hay vistas guardadas
+                {dashboardVistas.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    Sin vistas en el panel
                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      resetForm();
-                      setVistaTab("nueva");
-                    }}
-                  >
-                    <Plus className="mr-1 h-4 w-4" /> Crear primera vista
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {vistas.map((vista) => (
-                    <Card
-                      key={vista.id}
-                      className="group cursor-pointer transition-shadow hover:shadow-md"
-                      onClick={() => {
-                        setNombre(vista.nombre);
-                        setChartType(vista.config.chartType);
-                        setGroupBy(vista.config.groupBy);
-                        setEditId(vista.id);
-                        handlePreview();
-                      }}
-                    >
-                      <CardContent className="flex items-center gap-4 p-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          {chartTypeIcon(vista.config.chartType)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {vista.nombre}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {chartTypeLabel(vista.config.chartType)} —{" "}
-                            {groupByLabel(vista.config.groupBy)}
-                          </p>
-                        </div>
-                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEdit(vista);
-                            }}
-                            title="Editar"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(vista.id);
-                            }}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  <button
-                    className="flex min-h-[80px] items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
-                    onClick={() => {
-                      resetForm();
-                      setVistaTab("nueva");
-                    }}
-                  >
-                    <Plus className="mr-2 h-5 w-5" /> Nueva Vista
-                  </button>
-                </div>
-              )}
-            </TabsContent>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {dashboardVistas.map((dv) => (
+                      <div key={dv.id} className="relative group">
+                        <ChartWidget vista={dv} />
+                        <button
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded bg-background/80 text-destructive hover:bg-destructive/10 transition-opacity"
+                          onClick={() => removeFromDashboard(dv.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
 
-            <TabsContent value="nueva">
+        <TabsContent value="nueva">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{editId ? "Editar Vista" : "Nueva Vista"}</CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="space-y-6">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
                     <Label htmlFor="vista-nombre">Nombre de la Vista</Label>
-                    <Input
-                      id="vista-nombre"
-                      placeholder="Ej: Contenedores por Cliente"
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                    />
+                    <Input id="vista-nombre" placeholder="Ej: Contenedores por Cliente" value={nombre} onChange={(e) => setNombre(e.target.value)} />
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="vista-chart">Tipo de Gráfico</Label>
-                    <Select
-                      value={chartType}
-                      onValueChange={(v) => {
-                        setChartType(v);
-                        setPreviewData(null);
-                      }}
-                    >
-                      <SelectTrigger id="vista-chart">
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={chartType} onValueChange={(v) => { setChartType(v); setPreviewData(null); }}>
+                      <SelectTrigger id="vista-chart"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {CHART_TYPE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="vista-groupby">Agrupar por</Label>
-                    <Select
-                      value={groupBy}
-                      onValueChange={(v) => {
-                        setGroupBy(v);
-                        setPreviewData(null);
-                      }}
-                    >
-                      <SelectTrigger id="vista-groupby">
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={groupBy} onValueChange={(v) => { setGroupBy(v); setPreviewData(null); }}>
+                      <SelectTrigger id="vista-groupby"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {GROUP_BY_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -406,56 +378,80 @@ export default function AdminReports() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={handlePreview}
-                    disabled={previewLoading}
-                  >
+                  <Button variant="outline" onClick={handlePreview} disabled={previewLoading}>
                     <Eye className="mr-1 h-4 w-4" />
                     {previewLoading ? "Cargando..." : "Previsualizar"}
                   </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={saveLoading || !nombre.trim()}
-                  >
-                    {saveLoading
-                      ? "Guardando..."
-                      : editId
-                        ? "Guardar Cambios"
-                        : "Guardar Vista"}
+                  <Button onClick={handleSave} disabled={saveLoading || !nombre.trim()}>
+                    {saveLoading ? "Guardando..." : editId ? "Guardar Cambios" : "Guardar Vista"}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      resetForm();
-                      setVistaTab("lista");
-                    }}
-                  >
+                  <Button variant="ghost" onClick={() => { resetForm(); setVistaTab("dashboard"); }}>
                     Cancelar
                   </Button>
                 </div>
 
                 {previewData && previewData.length > 0 && (
-                  <PreviewChart
-                    type={chartType}
-                    title={nombre || "Vista previa"}
-                    data={previewData}
-                  />
-                )}
-
-                {previewData && previewData.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Sin datos para la configuración seleccionada.
-                  </p>
+                  <div className="mt-4">
+                    {chartType === "line" ? (
+                      <div className="rounded-lg border bg-card p-4">
+                        <h3 className="mb-2 text-sm font-semibold">Vista previa</h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <ReLineChart data={previewData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                            <ReTooltip
+                              contentStyle={{ backgroundColor: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--popover-foreground))" }}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                          </ReLineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <ReportCharts
+                        type={chartType as "bar" | "pie"}
+                        title="Vista previa"
+                        data={previewData.map((d) => ({ name: d.name, value: d.value, color: d.color }))}
+                        height={300}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <h2 className="text-lg font-semibold">Reportes Predefinidos</h2>
+        <TabsContent value="predefinidos">
+          <PredefinedReports />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
 
+function PredefinedReports() {
+  const [estadoDist, setEstadoDist] = useState<{ nombre: string; color: string; cantidad: number }[]>([]);
+  const [tiposIso, setTiposIso] = useState<{ tipo: string; cantidad: number }[]>([]);
+  const [peligrosa, setPeligrosa] = useState<{ tipo: string; cantidad: number }[]>([]);
+  const [actividad, setActividad] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      api.get("/reportes/estados-distribucion"),
+      api.get("/reportes/tipos-iso"),
+      api.get("/reportes/peligrosa"),
+      api.get("/reportes/actividad"),
+    ]).then(([estRes, isoRes, pelRes, actRes]) => {
+      setEstadoDist(estRes.data);
+      setTiposIso(isoRes.data);
+      setPeligrosa(pelRes.data);
+      setActividad(actRes.data);
+    });
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-6">
       <Tabs defaultValue="estados">
         <TabsList>
           <TabsTrigger value="estados">Distribución por Estado</TabsTrigger>
@@ -466,83 +462,30 @@ export default function AdminReports() {
 
         <TabsContent value="estados">
           <div className="grid gap-6 lg:grid-cols-2">
-            <ReportCharts
-              type="bar"
-              title="Contenedores por Estado"
-              data={estadoDist.map((e) => ({
-                name: e.nombre,
-                value: e.cantidad,
-                color: e.color,
-              }))}
-            />
-            <ReportCharts
-              type="pie"
-              title="Distribución Porcentual"
-              data={estadoDist.map((e) => ({
-                name: e.nombre,
-                value: e.cantidad,
-                color: e.color,
-              }))}
-            />
+            <ReportCharts type="bar" title="Contenedores por Estado" data={estadoDist.map((e) => ({ name: e.nombre, value: e.cantidad, color: e.color }))} />
+            <ReportCharts type="pie" title="Distribución Porcentual" data={estadoDist.map((e) => ({ name: e.nombre, value: e.cantidad, color: e.color }))} />
           </div>
         </TabsContent>
-
         <TabsContent value="tipos">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ReportCharts
-              type="bar"
-              title="Contenedores por Tipo ISO"
-              data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))}
-            />
-            <ReportCharts
-              type="pie"
-              title="Distribución de Tipos ISO"
-              data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))}
-            />
-          </div>
+          <ReportCharts type="bar" title="Tipos ISO" data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))} />
         </TabsContent>
-
         <TabsContent value="peligrosa">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ReportCharts
-              type="pie"
-              title="Mercancía Peligrosa vs Normal"
-              data={peligrosa.map((p) => ({
-                name: p.tipo,
-                value: p.cantidad,
-              }))}
-            />
-          </div>
+          <ReportCharts type="pie" title="Mercancía Peligrosa vs Normal" data={peligrosa.map((p) => ({ name: p.tipo, value: p.cantidad }))} />
         </TabsContent>
-
         <TabsContent value="actividad">
           <Card>
             <CardContent className="pt-6">
               {actividad.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground">
-                  Sin actividad registrada
-                </p>
+                <p className="text-center text-sm text-muted-foreground">Sin actividad registrada</p>
               ) : (
                 <div className="space-y-2">
                   {actividad.slice(0, 50).map((mov: any) => (
-                    <div
-                      key={mov.id}
-                      className="flex items-center gap-3 rounded-md border p-3 text-sm"
-                    >
-                      <span className="font-mono font-medium">
-                        {mov.contenedor_id}
-                      </span>
-                      {mov.estado_anterior && (
-                        <span className="text-muted-foreground">
-                          {mov.estado_anterior.nombre} →
-                        </span>
-                      )}
-                      <span className="font-medium">
-                        {mov.estado_nuevo?.nombre}
-                      </span>
+                    <div key={mov.id} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+                      <span className="font-mono font-medium">{mov.contenedor_id}</span>
+                      {mov.estado_anterior && <span className="text-muted-foreground">{mov.estado_anterior.nombre} →</span>}
+                      <span className="font-medium">{mov.estado_nuevo?.nombre}</span>
                       <span className="ml-auto text-xs text-muted-foreground">
-                        {new Date(mov.created_at).toLocaleString()} —{" "}
-                        {mov.username}
+                        {new Date(mov.created_at).toLocaleString()} — {mov.username}
                       </span>
                     </div>
                   ))}

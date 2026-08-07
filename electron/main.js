@@ -46,6 +46,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: "EML Shipping Tracker",
+    icon: path.join(__dirname, "..", "frontend", "public", "img", "logo.svg"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

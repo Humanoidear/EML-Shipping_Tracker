@@ -54,26 +54,31 @@ export function ContainerGlobe({ points, routes = [], focusOn, width, height }: 
       ref={globeEl}
       width={width}
       height={height}
-      globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-      showGraticules={true}
-      pointsData={points}
-      pointLat="lat"
-      pointLng="lng"
-      pointColor={(d: any) => d.color || "#f59e0b"}
-      pointAltitude={0.015}
-      pointRadius={0.35}
-      pointLabel="label"
-      arcsData={routes}
-      arcStartLat="startLat"
-      arcStartLng="startLng"
-      arcEndLat="endLat"
-      arcEndLng="endLng"
-      arcColor={(d: any) => d.color || "#3b82f6"}
-      arcAltitude={0.2}
-      arcStroke={1.5}
-      arcDashGap={2}
-      atmosphereColor="#bfdbfe"
-      backgroundColor="rgba(0,0,0,0)"
+      {...({
+        globeImageUrl: "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
+        showGraticules: true,
+        pointsData: points,
+        pointLat: "lat",
+        pointLng: "lng",
+        pointColor: (d: any) => d.color || "#f59e0b",
+        pointAltitude: 0.015,
+        pointRadius: 0.35,
+        pointLabel: "label",
+        arcsData: routes,
+        arcStartLat: "startLat",
+        arcStartLng: "startLng",
+        arcEndLat: "endLat",
+        arcEndLng: "endLng",
+        arcColor: (d: any) => d.color || "#3b82f6",
+        arcAltitude: 0.2,
+        arcStroke: 1.5,
+        arcDashGap: 2,
+        atmosphereColor: "#bfdbfe",
+        backgroundColor: "rgba(0,0,0,0)",
+        cloudsImgUrl: "https://unpkg.com/three-globe/example/img/earth-clouds.png",
+        cloudsAltitude: 0.004,
+        cloudsOpacity: 0.35,
+      } as any)}
     />
   );
 }

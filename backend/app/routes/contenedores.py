@@ -3,6 +3,7 @@ from datetime import datetime
 from ..extensions import db
 from ..models.contenedor import Contenedor
 from ..models.movimiento import Movimiento
+from ..models.adjunto import Adjunto
 from ..utils.decorators import login_required
 from ..services.qr_service import generate_qr
 
@@ -16,6 +17,15 @@ def _parse_fecha(val):
         return datetime.fromisoformat(val.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return datetime.utcnow()
+
+
+def _parse_fecha_or_none(val):
+    if not val:
+        return None
+    try:
+        return datetime.fromisoformat(val.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 
 @contenedores_bp.route("", methods=["GET"])
@@ -36,6 +46,8 @@ def get_contenedor(current_user, contenedor_id):
 @login_required
 def create_contenedor(current_user):
     data = request.get_json()
+    if Contenedor.query.filter_by(matricula=data["matricula"]).first():
+        return jsonify({"error": "Ya existe un contenedor con esa matrícula"}), 400
     contenedor = Contenedor(
         matricula=data["matricula"],
         cliente_id=data.get("cliente_id"),
@@ -45,26 +57,34 @@ def create_contenedor(current_user):
         mercancia_peligrosa=data.get("mercancia_peligrosa", False),
         peso_kg=data.get("peso_kg"),
         mercancia=data.get("mercancia"),
+        destino=data.get("destino"),
         notas=data.get("notas"),
+        alquilado=data.get("alquilado", False),
+        fecha_inicio_alquiler=_parse_fecha_or_none(data.get("fecha_inicio_alquiler")),
+        fecha_devolucion_alquiler=_parse_fecha_or_none(data.get("fecha_devolucion_alquiler")),
         ubicacion_lat=data.get("ubicacion_lat"),
         ubicacion_lng=data.get("ubicacion_lng"),
     )
     db.session.add(contenedor)
     db.session.flush()
 
-    if data.get("estado_id"):
-        movimiento = Movimiento(
-            contenedor_id=contenedor.id,
-            estado_anterior_id=None,
-            estado_nuevo_id=data["estado_id"],
-            ubicacion_lat=data.get("ubicacion_lat"),
-            ubicacion_lng=data.get("ubicacion_lng"),
-            notas="Contenedor creado",
-            user_id=current_user.id,
-        )
-        db.session.add(movimiento)
+    try:
+        if data.get("estado_id"):
+            movimiento = Movimiento(
+                contenedor_id=contenedor.id,
+                estado_anterior_id=None,
+                estado_nuevo_id=data["estado_id"],
+                ubicacion_lat=data.get("ubicacion_lat"),
+                ubicacion_lng=data.get("ubicacion_lng"),
+                notas="Contenedor creado",
+                user_id=current_user.id,
+            )
+            db.session.add(movimiento)
 
-    db.session.commit()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Error al crear contenedor"}), 500
     return jsonify(contenedor.to_dict()), 201
 
 
@@ -74,14 +94,22 @@ def update_contenedor(current_user, contenedor_id):
     contenedor = Contenedor.query.get_or_404(contenedor_id)
     data = request.get_json()
     fields = [
-        "matricula", "cliente_id", "tipo_iso", "origen",
+        "matricula", "cliente_id", "tipo_iso", "origen", "destino",
         "mercancia_peligrosa", "peso_kg", "mercancia", "notas",
-        "ubicacion_lat", "ubicacion_lng",
+        "alquilado", "ubicacion_lat", "ubicacion_lng",
     ]
     for field in fields:
         if field in data:
             setattr(contenedor, field, data[field])
-    db.session.commit()
+    if "fecha_inicio_alquiler" in data:
+        contenedor.fecha_inicio_alquiler = _parse_fecha_or_none(data["fecha_inicio_alquiler"])
+    if "fecha_devolucion_alquiler" in data:
+        contenedor.fecha_devolucion_alquiler = _parse_fecha_or_none(data["fecha_devolucion_alquiler"])
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Error al actualizar: matrícula duplicada o datos inválidos"}), 400
     return jsonify(contenedor.to_dict())
 
 
@@ -218,3 +246,35 @@ def lookup_by_matricula(current_user, matricula):
     if not contenedor:
         return jsonify({"error": "Contenedor no encontrado"}), 404
     return jsonify(contenedor.to_dict())
+
+
+@contenedores_bp.route("/<int:contenedor_id>/adjuntos", methods=["GET"])
+@login_required
+def get_adjuntos(current_user, contenedor_id):
+    adjuntos = Adjunto.query.filter_by(contenedor_id=contenedor_id).order_by(Adjunto.created_at.desc()).all()
+    return jsonify([a.to_dict() for a in adjuntos])
+
+
+@contenedores_bp.route("/<int:contenedor_id>/adjuntos", methods=["POST"])
+@login_required
+def add_adjunto(current_user, contenedor_id):
+    data = request.get_json()
+    adjunto = Adjunto(
+        contenedor_id=contenedor_id,
+        tipo=data["tipo"],
+        nombre=data.get("nombre", ""),
+        filename=data.get("filename", ""),
+        data=data.get("data", ""),
+    )
+    db.session.add(adjunto)
+    db.session.commit()
+    return jsonify(adjunto.to_dict()), 201
+
+
+@contenedores_bp.route("/<int:contenedor_id>/adjuntos/<int:adj_id>", methods=["DELETE"])
+@login_required
+def delete_adjunto(current_user, contenedor_id, adj_id):
+    adjunto = Adjunto.query.filter_by(id=adj_id, contenedor_id=contenedor_id).first_or_404()
+    db.session.delete(adjunto)
+    db.session.commit()
+    return jsonify({"message": "Adjunto eliminado"})

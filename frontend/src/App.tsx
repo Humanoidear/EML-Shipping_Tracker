@@ -1,12 +1,12 @@
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { PageControlsProvider } from "@/contexts/PageControlsContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Navbar } from "@/components/layout/Navbar";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import ContenedorDetail from "@/pages/ContenedorDetail";
 import AdminDashboard from "@/pages/AdminDashboard";
-import AdminUsers from "@/pages/AdminUsers";
 import AdminReports from "@/pages/AdminReports";
 import AdminGlobe from "@/pages/AdminGlobe";
 import Settings from "@/pages/Settings";
@@ -105,14 +105,6 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/admin/users"
-        element={
-          <ProtectedRoute adminOnly>
-            <AdminUsers />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/admin/reports"
         element={
           <ProtectedRoute adminOnly>
@@ -148,7 +140,9 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <PageControlsProvider>
+          <AppRoutes />
+        </PageControlsProvider>
       </AuthProvider>
     </Router>
   );

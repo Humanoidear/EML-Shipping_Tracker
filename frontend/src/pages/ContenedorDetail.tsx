@@ -8,24 +8,24 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { OpenStreetMap } from "@/components/map/OpenStreetMap";
 import { QRGenerator } from "@/components/qr/QRGenerator";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Ship, User, Box, Scale, AlertTriangle, MapPin,
   Calendar, FileText, Pencil, Trash2, Plus, GripVertical,
-  Clock, FileSpreadsheet, Layers,
+  Camera, Paperclip, FileSpreadsheet, Layers, Clock, Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 interface Contenedor {
   id: number;
@@ -37,7 +37,11 @@ interface Contenedor {
   mercancia_peligrosa: boolean;
   peso_kg?: number;
   mercancia?: string;
+  destino?: string;
   notas?: string;
+  alquilado?: boolean;
+  fecha_inicio_alquiler?: string;
+  fecha_devolucion_alquiler?: string;
   ubicacion_lat?: number;
   ubicacion_lng?: number;
   created_at: string;
@@ -87,8 +91,22 @@ export default function ContenedorDetail() {
   const [editingMov, setEditingMov] = useState<Movimiento | null>(null);
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [activeTab, setActiveTab] = useState("info");
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const contenedorRef = useRef(contenedor);
   contenedorRef.current = contenedor;
+
+  const [editMatricula, setEditMatricula] = useState("");
+  const [editClienteId, setEditClienteId] = useState<string>("");
+  const [editTipoIso, setEditTipoIso] = useState("");
+  const [editOrigen, setEditOrigen] = useState("");
+  const [editDestino, setEditDestino] = useState("");
+  const [editPeso, setEditPeso] = useState("");
+  const [editMercancia, setEditMercancia] = useState("");
+  const [editNotas, setEditNotas] = useState("");
+  const [editPeligrosa, setEditPeligrosa] = useState(false);
+  const [editAlquilado, setEditAlquilado] = useState(false);
+  const [editFechaInicio, setEditFechaInicio] = useState("");
+  const [editFechaDevolucion, setEditFechaDevolucion] = useState("");
   const pageRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(() => {
@@ -162,6 +180,30 @@ export default function ContenedorDetail() {
     } catch (err) {
       console.error("Delete error:", err);
       alert("Error al eliminar el contenedor");
+    }
+  };
+
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.put(`/contenedores/${id}`, {
+        matricula: editMatricula,
+        cliente_id: editClienteId ? parseInt(editClienteId) : null,
+        tipo_iso: editTipoIso,
+        origen: editOrigen,
+        destino: editDestino,
+        peso_kg: editPeso ? parseFloat(editPeso) : null,
+        mercancia: editMercancia,
+        notas: editNotas,
+        alquilado: editAlquilado,
+        mercancia_peligrosa: editPeligrosa,
+        fecha_inicio_alquiler: editAlquilado && editFechaInicio ? new Date(editFechaInicio).toISOString() : null,
+        fecha_devolucion_alquiler: editAlquilado && editFechaDevolucion ? new Date(editFechaDevolucion).toISOString() : null,
+      });
+      setShowEditDialog(false);
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error al actualizar");
     }
   };
 
@@ -274,9 +316,6 @@ export default function ContenedorDetail() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleDelete} title="Eliminar contenedor">
-            <Trash2 className="h-5 w-5 text-destructive" />
-          </Button>
           <div>
             <h1 className="text-2xl font-bold">{contenedor.matricula}</h1>
             {contenedor.estado && (
@@ -287,6 +326,29 @@ export default function ContenedorDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => {
+            if (!contenedor) return;
+            setEditMatricula(contenedor.matricula);
+            setEditClienteId(contenedor.cliente?.id?.toString() || "");
+            setEditTipoIso(contenedor.tipo_iso || "");
+            setEditOrigen(contenedor.origen || "");
+            setEditDestino(contenedor.destino || "");
+            setEditPeso(contenedor.peso_kg?.toString() || "");
+            setEditMercancia(contenedor.mercancia || "");
+            setEditNotas(contenedor.notas || "");
+            setEditPeligrosa(contenedor.mercancia_peligrosa || false);
+            setEditAlquilado(contenedor.alquilado || false);
+            setEditFechaInicio(contenedor.fecha_inicio_alquiler ? new Date(contenedor.fecha_inicio_alquiler).toISOString().slice(0, 16) : "");
+            setEditFechaDevolucion(contenedor.fecha_devolucion_alquiler ? new Date(contenedor.fecha_devolucion_alquiler).toISOString().slice(0, 16) : "");
+            setShowEditDialog(true);
+          }}>
+            <Pencil className="mr-1 h-4 w-4" />
+            Editar
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDelete}>
+            <Trash2 className="mr-1 h-4 w-4 text-destructive" />
+            Eliminar
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportExcel}>
             <FileSpreadsheet className="mr-1 h-4 w-4" />
             Exportar Excel
@@ -304,6 +366,8 @@ export default function ContenedorDetail() {
           <TabsTrigger value="mapa">Mapa</TabsTrigger>
           <TabsTrigger value="movimientos">Historial</TabsTrigger>
           <TabsTrigger value="qr">Código QR</TabsTrigger>
+          <TabsTrigger value="fotos">Fotos</TabsTrigger>
+          <TabsTrigger value="documentos">Documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info">
@@ -332,7 +396,7 @@ export default function ContenedorDetail() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Scale className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Peso:</span>
+                  <span className="text-muted-foreground">Tara:</span>
                   <span>{contenedor.peso_kg != null ? `${contenedor.peso_kg} kg` : "-"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
@@ -340,6 +404,29 @@ export default function ContenedorDetail() {
                   <span className="text-muted-foreground">Origen:</span>
                   <span>{contenedor.origen || "-"}</span>
                 </div>
+                {contenedor.destino && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Destino:</span>
+                    <span>{contenedor.destino}</span>
+                  </div>
+                )}
+                {contenedor.alquilado && (
+                  <div className="flex items-center gap-2 text-sm text-primary">
+                    <Calendar className="h-4 w-4" />
+                    <span>Alquilado</span>
+                    {contenedor.fecha_inicio_alquiler && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        Inicio: {new Date(contenedor.fecha_inicio_alquiler).toLocaleDateString()}
+                      </span>
+                    )}
+                    {contenedor.fecha_devolucion_alquiler && (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        — Devolución: {new Date(contenedor.fecha_devolucion_alquiler).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {contenedor.mercancia_peligrosa && (
                   <div className="flex items-center gap-2 text-sm text-orange-500">
                     <AlertTriangle className="h-4 w-4" />
@@ -548,7 +635,66 @@ export default function ContenedorDetail() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="fotos">
+          <AdjuntosTab contenedorId={contenedor.id} tipo="photo" />
+        </TabsContent>
+
+        <TabsContent value="documentos">
+          <AdjuntosTab contenedorId={contenedor.id} tipo="document" />
+        </TabsContent>
       </Tabs>
+
+      {showEditDialog && contenedor && (
+        <Dialog open onOpenChange={() => setShowEditDialog(false)}>
+          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Editar Contenedor</DialogTitle>
+              <DialogDescription>{contenedor.matricula}</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditSave} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Matrícula *</Label>
+                <Input value={editMatricula} onChange={(e) => setEditMatricula(e.target.value)} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Cliente</Label>
+                  <Input value={editClienteId} onChange={(e) => setEditClienteId(e.target.value)} placeholder="ID del cliente" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo ISO</Label>
+                  <Input value={editTipoIso} onChange={(e) => setEditTipoIso(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Origen</Label><Input value={editOrigen} onChange={(e) => setEditOrigen(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Destino</Label><Input value={editDestino} onChange={(e) => setEditDestino(e.target.value)} /></div>
+              </div>
+              <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={editPeso} onChange={(e) => setEditPeso(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Mercancía</Label><Input value={editMercancia} onChange={(e) => setEditMercancia(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Notas</Label><Input value={editNotas} onChange={(e) => setEditNotas(e.target.value)} /></div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label className="cursor-pointer">Mercancía peligrosa</Label>
+                <Switch checked={editPeligrosa} onCheckedChange={setEditPeligrosa} />
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label className="cursor-pointer">Alquilado</Label>
+                <Switch checked={editAlquilado} onCheckedChange={setEditAlquilado} />
+              </div>
+              {editAlquilado && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Inicio alquiler</Label><Input type="datetime-local" value={editFechaInicio} onChange={(e) => setEditFechaInicio(e.target.value)} /></div>
+                  <div className="space-y-2"><Label>Devolución alquiler</Label><Input type="datetime-local" value={editFechaDevolucion} onChange={(e) => setEditFechaDevolucion(e.target.value)} /></div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button type="submit">Guardar Cambios</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {editingMov && (
         <EditLocationDialog
@@ -577,8 +723,8 @@ function EditLocationDialog({
   onSave: (movId: number, lat: number, lng: number, notas: string, fecha?: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [lat, setLat] = useState(movimiento?.ubicacion_lat?.toString() || "");
-  const [lng, setLng] = useState(movimiento?.ubicacion_lng?.toString() || "");
+  const [lat, setLat] = useState<number | undefined>(movimiento?.ubicacion_lat);
+  const [lng, setLng] = useState<number | undefined>(movimiento?.ubicacion_lng);
   const [notas, setNotas] = useState(movimiento?.notas || "");
   const [fecha, setFecha] = useState(
     movimiento?.fecha
@@ -591,18 +737,16 @@ function EditLocationDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const latNum = parseFloat(lat);
-    const lngNum = parseFloat(lng);
-    if (isNaN(latNum) || isNaN(lngNum)) {
-      alert("Coordenadas inválidas");
+    if (lat == null || lng == null) {
+      alert("Selecciona una ubicación en el mapa");
       return;
     }
     setLoading(true);
     try {
       await onSave(
         movimiento?.id || 0,
-        latNum,
-        lngNum,
+        lat,
+        lng,
         notas,
         fecha ? new Date(fecha).toISOString() : undefined,
       );
@@ -616,32 +760,33 @@ function EditLocationDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{movimiento ? "Editar Ubicación" : "Nueva Ubicación"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Latitud *</Label>
-              <Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="41.3874" required />
-            </div>
-            <div className="space-y-2">
-              <Label>Longitud *</Label>
-              <Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="2.1686" required />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Fecha del punto</Label>
-            <Input
-              type="datetime-local"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
+          <div className="h-64 rounded-md overflow-hidden border">
+            <OpenStreetMap
+              lat={lat}
+              lng={lng}
+              onLocationSelect={(newLat, newLng) => {
+                setLat(newLat);
+                setLng(newLng);
+              }}
             />
           </div>
+          {lat != null && lng != null && (
+            <p className="text-xs text-muted-foreground">
+              Ubicación: {lat.toFixed(6)}, {lng.toFixed(6)}
+            </p>
+          )}
           <div className="space-y-2">
             <Label>Notas</Label>
             <Input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Opcional" />
+          </div>
+          <div className="space-y-2">
+            <Label>Fecha</Label>
+            <Input type="datetime-local" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>
@@ -651,4 +796,122 @@ function EditLocationDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function AdjuntosTab({ contenedorId, tipo }: { contenedorId: number; tipo: "photo" | "document" }) {
+  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const fetchAdjuntos = () => {
+    api.get(`/contenedores/${contenedorId}/adjuntos`).then((res) => setAdjuntos(res.data));
+  };
+
+  useEffect(() => { fetchAdjuntos(); }, [contenedorId]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("El archivo no puede superar 5 MB");
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const dataUrl = reader.result as string;
+        await api.post(`/contenedores/${contenedorId}/adjuntos`, {
+          tipo,
+          nombre: file.name,
+          filename: file.name,
+          data: dataUrl,
+        });
+        fetchAdjuntos();
+      } catch { alert("Error al subir archivo"); }
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDelete = async (adjId: number) => {
+    if (!confirm("¿Eliminar este adjunto?")) return;
+    await api.delete(`/contenedores/${contenedorId}/adjuntos/${adjId}`);
+    fetchAdjuntos();
+  };
+
+  const items = adjuntos.filter((a) => a.tipo === tipo);
+
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-6">
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? "Subiendo..." : tipo === "photo" ? (
+              <><Camera className="mr-1 h-4 w-4" /> Subir Foto</>
+            ) : (
+              <><Paperclip className="mr-1 h-4 w-4" /> Subir Documento</>
+            )}
+          </Button>
+          <input ref={fileRef} type="file" className="hidden" accept={tipo === "photo" ? "image/*" : ".pdf,.doc,.docx,.xls,.xlsx,.txt"} onChange={handleFileUpload} />
+        </div>
+
+        {items.length > 0 ? (
+          tipo === "photo" ? (
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Fotos ({items.length})</h3>
+              <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
+                {items.map((p) => (
+                  <div key={p.id} className="relative group rounded-lg border overflow-hidden">
+                    <img src={p.data} alt={p.nombre} className="w-full h-32 object-cover" />
+                    <button
+                      className="absolute top-1 right-1 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleDelete(p.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                    <p className="p-1 text-[10px] text-muted-foreground truncate">{p.nombre}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Documentos ({items.length})</h3>
+              <div className="space-y-1">
+                {items.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="truncate">{d.nombre}</span>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <a href={d.data} download={d.nombre} className="text-xs text-primary hover:underline p-1">Descargar</a>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(d.id)}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Sin {tipo === "photo" ? "fotos" : "documentos"}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface Adjunto {
+  id: number;
+  tipo: string;
+  nombre: string;
+  filename: string;
+  data: string;
+  created_at: string;
 }

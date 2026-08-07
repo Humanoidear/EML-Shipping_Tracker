@@ -1,13 +1,17 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  DndContext, DragOverlay, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors,
+  type DragStartEvent, type DragEndEvent, type DragOverEvent,
+} from "@dnd-kit/core";
 import { KanbanColumn } from "./KanbanColumn";
+import { ContenedorCard } from "./ContenedorCard";
 import { MovimientoDialog } from "./MovimientoDialog";
 import api from "@/lib/api";
-import { Loader2, Trash2, Layers, X } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Estado {
   id: number;
@@ -22,6 +26,7 @@ interface Contenedor {
   cliente_id?: number | null;
   cliente?: { nombre: string } | null;
   tipo_iso?: string;
+  destino?: string;
   mercancia_peligrosa: boolean;
   peso_kg?: number;
 }
@@ -40,45 +45,47 @@ export interface KanbanFilters {
   soloPeligrosa: boolean;
 }
 
-const TRASH_ID = "trash-zone";
-const GROUP_PREFIX = "group:";
+interface Props {
+  filters: KanbanFilters;
+  selectionMode: boolean;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+}
 
-export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
+const TRASH_ID = "trash-bin";
+
+export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelect }: Props) {
   const [estados, setEstados] = useState<Estado[]>([]);
   const [contenedores, setContenedores] = useState<Contenedor[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overDragId, setOverDragId] = useState<string | null>(null);
   const [movingContenedor, setMovingContenedor] = useState<Contenedor | null>(null);
   const [targetEstadoId, setTargetEstadoId] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [deletingContenedor, setDeletingContenedor] = useState<Contenedor | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [showGroupDialog, setShowGroupDialog] = useState(false);
+  const [movingGrupoId, setMovingGrupoId] = useState<number | null>(null);
+  const [deletingGrupoId, setDeletingGrupoId] = useState<number | null>(null);
+  const [groupingPair, setGroupingPair] = useState<{ sourceId: number; targetId: number } | null>(null);
   const [groupName, setGroupName] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   const fetchAll = async () => {
     try {
       const [estRes, contRes, grpRes] = await Promise.all([
-        api.get("/estados"),
-        api.get("/contenedores"),
-        api.get("/grupos"),
+        api.get("/estados"), api.get("/contenedores"), api.get("/grupos"),
       ]);
       setEstados(estRes.data);
       setContenedores(contRes.data);
       setGrupos(grpRes.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetchAll(); }, []);
-
-  useEffect(() => {
-    if (!selectionMode) setSelectedIds(new Set());
-  }, [selectionMode]);
 
   const groupedContIds = useMemo(() => {
     const ids = new Set<number>();
@@ -96,138 +103,81 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
     });
   }, [contenedores, filters]);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef(false);
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+    setOverDragId(null);
+  };
 
-  const startAutoScroll = useCallback(() => {
-    dragRef.current = true;
-    const container = scrollRef.current;
-    if (!container) return;
-    const onMove = (e: MouseEvent) => {
-      if (!dragRef.current || !container) return;
-      const rect = container.getBoundingClientRect();
-      const threshold = 100;
-      const speed = 10;
-      if (e.clientX - rect.left < threshold) {
-        container.scrollLeft -= speed * (1 - (e.clientX - rect.left) / threshold);
-      } else if (rect.right - e.clientX < threshold) {
-        container.scrollLeft += speed * (1 - (rect.right - e.clientX) / threshold);
+  const handleDragOver = (event: DragOverEvent) => {
+    setOverDragId(event.over?.id ? String(event.over.id) : null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
+    setOverDragId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Trash zone
+    if (overId === TRASH_ID) {
+      if (activeId.startsWith("group-")) {
+        const grupoId = parseInt(activeId.replace("group-", ""));
+        setDeletingGrupoId(grupoId);
+      } else {
+        const contId = parseInt(activeId);
+        const cont = contenedores.find((c) => c.id === contId);
+        if (cont) setDeletingContenedor(cont);
       }
-    };
-    document.addEventListener("mousemove", onMove);
-    return () => document.removeEventListener("mousemove", onMove);
-  }, []);
-
-  const onDragStart = () => {
-    setIsDragging(true);
-    startAutoScroll();
-  };
-
-  const onDragEnd = (result: DropResult) => {
-    setIsDragging(false);
-    dragRef.current = false;
-
-    if (result.combine) {
-      const sourceContId = parseInt(result.draggableId);
-      const targetContId = parseInt(result.combine.draggableId);
-      if (result.source.droppableId !== result.combine.droppableId) return;
-      setSelectedIds(new Set([sourceContId, targetContId]));
-      setSelectionMode(true);
-      setShowGroupDialog(true);
       return;
     }
 
-    if (!result.destination) return;
+    // Dropping one ungrouped container directly on another creates a group.
+    if (!activeId.startsWith("group-") && /^\d+$/.test(overId) && activeId !== overId) {
+      const sourceId = Number(activeId);
+      const targetId = Number(overId);
+      const source = contenedores.find((c) => c.id === sourceId);
+      const target = contenedores.find((c) => c.id === targetId);
+      const sourceGroup = grupos.find((g) => g.contenedores.some((c) => c.id === sourceId));
+      const targetGroup = grupos.find((g) => g.contenedores.some((c) => c.id === targetId));
 
-    const destId = result.destination.droppableId;
-    const sourceId = result.source.droppableId;
+      if (source && target && !sourceGroup && !targetGroup) {
+        setGroupingPair({ sourceId, targetId });
+        return;
+      }
+    }
 
-    if (sourceId.startsWith(GROUP_PREFIX)) {
-      const grupoId = parseInt(sourceId.replace(GROUP_PREFIX, ""));
-      if (destId === TRASH_ID) return;
-      setMovingGrupoId(grupoId);
-      setTargetEstadoId(parseInt(destId));
+    // Dropping a container on an existing group adds it to that group.
+    if (!activeId.startsWith("group-") && overId.startsWith("group-")) {
+      const groupId = Number(overId.replace("group-", ""));
+      const containerId = Number(activeId);
+      addToGroup(groupId, containerId);
       return;
     }
 
-    if (destId === TRASH_ID) {
-      const contId = parseInt(result.draggableId);
-      const cont = contenedores.find((c) => c.id === contId);
-      if (cont) setDeletingContenedor(cont);
+    // Moving a group
+    if (activeId.startsWith("group-")) {
+      const grupoId = parseInt(activeId.replace("group-", ""));
+      const targetEstado = _findParentEstado(overId, estados, filteredContenedores, grupos, groupedContIds);
+      if (targetEstado != null) {
+        setMovingGrupoId(grupoId);
+        setTargetEstadoId(targetEstado);
+      }
       return;
     }
 
-    if (destId.startsWith(GROUP_PREFIX)) {
-      const grupoId = parseInt(destId.replace(GROUP_PREFIX, ""));
-      const contId = parseInt(result.draggableId);
-      addToGroup(grupoId, contId);
-      return;
+    // Container move
+    const contId = parseInt(activeId);
+    const cont = contenedores.find((c) => c.id === contId);
+    if (!cont) return;
+
+    const targetEstado = _findParentEstado(overId, estados, filteredContenedores, grupos, groupedContIds);
+    if (targetEstado != null && targetEstado !== cont.estado_id) {
+      setMovingContenedor(cont);
+      setTargetEstadoId(targetEstado);
     }
-
-    const contenedorId = parseInt(result.draggableId);
-    const newEstadoId = parseInt(destId);
-    const contenedor = contenedores.find((c) => c.id === contenedorId);
-    if (!contenedor || contenedor.estado_id === newEstadoId) return;
-
-    setMovingContenedor(contenedor);
-    setTargetEstadoId(newEstadoId);
-  };
-
-  const [movingGrupoId, setMovingGrupoId] = useState<number | null>(null);
-
-  const addToGroup = async (grupoId: number, contId: number) => {
-    try {
-      await api.post(`/grupos/${grupoId}/contenedores/${contId}`);
-      fetchAll();
-    } catch { alert("Error al agregar al grupo"); }
-  };
-
-  const removeFromGroup = async (grupoId: number, contId: number) => {
-    try {
-      await api.delete(`/grupos/${grupoId}/contenedores/${contId}`);
-      fetchAll();
-    } catch { alert("Error al remover del grupo"); }
-  };
-
-  const deleteGrupo = async (grupoId: number) => {
-    if (!confirm("¿Desagrupar todos los contenedores?")) return;
-    try {
-      await api.delete(`/grupos/${grupoId}`);
-      fetchAll();
-    } catch { alert("Error al eliminar grupo"); }
-  };
-
-  const handleCreateGroup = async () => {
-    if (selectedIds.size < 2) return;
-    const ids = Array.from(selectedIds);
-    try {
-      await api.post("/grupos", {
-        nombre: groupName || "Grupo sin nombre",
-        contenedor_ids: ids,
-        estado_id: contenedores.find((c) => c.id === ids[0])?.estado_id,
-      });
-      setSelectedIds(new Set());
-      setSelectionMode(false);
-      setShowGroupDialog(false);
-      setGroupName("");
-      fetchAll();
-    } catch { alert("Error al crear grupo"); }
-  };
-
-  const handleMoveGroup = async (newLat?: number, newLng?: number, notas?: string, fecha?: string) => {
-    if (!movingGrupoId || targetEstadoId === null) return;
-    try {
-      await api.put(`/grupos/${movingGrupoId}/mover`, {
-        nuevo_estado_id: targetEstadoId,
-        ubicacion_lat: newLat,
-        ubicacion_lng: newLng,
-        notas: notas || "",
-        fecha: fecha || undefined,
-      });
-      fetchAll();
-    } catch { alert("Error al mover grupo"); }
-    setMovingGrupoId(null);
-    setTargetEstadoId(null);
   };
 
   const handleDeleteConfirm = async () => {
@@ -235,49 +185,98 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
     try {
       await api.delete(`/contenedores/${deletingContenedor.id}`);
       setContenedores((prev) => prev.filter((c) => c.id !== deletingContenedor.id));
-    } catch { alert("Error al eliminar el contenedor"); }
+    } catch { alert("Error al eliminar"); }
     setDeletingContenedor(null);
+  };
+
+  const handleDeleteGrupoConfirm = async () => {
+    if (!deletingGrupoId) return;
+    try { await api.delete(`/grupos/${deletingGrupoId}`); fetchAll(); }
+    catch { alert("Error al eliminar grupo"); }
+    setDeletingGrupoId(null);
+  };
+
+  const addToGroup = async (grupoId: number, contenedorId: number) => {
+    try {
+      await api.post(`/grupos/${grupoId}/contenedores/${contenedorId}`);
+      fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error al agregar el contenedor al grupo");
+    }
+  };
+
+  const handleCreateDraggedGroup = async () => {
+    if (!groupingPair) return;
+    const source = contenedores.find((c) => c.id === groupingPair.sourceId);
+    const target = contenedores.find((c) => c.id === groupingPair.targetId);
+    if (!source || !target) return;
+
+    try {
+      await api.post("/grupos", {
+        nombre: groupName.trim() || "Grupo sin nombre",
+        estado_id: source.estado_id,
+        contenedor_ids: [source.id, target.id],
+      });
+      setGroupingPair(null);
+      setGroupName("");
+      fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error al crear grupo");
+    }
   };
 
   const handleMoveConfirm = async (newLat?: number, newLng?: number, notas?: string, fecha?: string) => {
     if (!movingContenedor || targetEstadoId === null) return;
     const prevEstadoId = movingContenedor.estado_id;
-    setContenedores((prev) =>
-      prev.map((c) => (c.id === movingContenedor.id ? { ...c, estado_id: targetEstadoId } : c))
-    );
+    setContenedores((prev) => prev.map((c) =>
+      c.id === movingContenedor.id ? { ...c, estado_id: targetEstadoId } : c
+    ));
     setMovingContenedor(null);
     setTargetEstadoId(null);
     try {
       await api.put(`/contenedores/${movingContenedor.id}/mover`, {
         nuevo_estado_id: targetEstadoId,
-        ubicacion_lat: newLat,
-        ubicacion_lng: newLng,
-        notas: notas || "",
-        fecha: fecha || undefined,
+        ubicacion_lat: newLat, ubicacion_lng: newLng,
+        notas: notas || "", fecha: fecha || undefined,
       });
     } catch {
-      setContenedores((prev) =>
-        prev.map((c) => (c.id === movingContenedor.id ? { ...c, estado_id: prevEstadoId } : c))
-      );
-      alert("Error al mover el contenedor");
+      setContenedores((prev) => prev.map((c) =>
+        c.id === movingContenedor.id ? { ...c, estado_id: prevEstadoId } : c
+      ));
+      alert("Error al mover");
     }
   };
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handleMoveGroup = async (newLat?: number, newLng?: number, notas?: string, fecha?: string) => {
+    if (!movingGrupoId || targetEstadoId === null) return;
+    try {
+      await api.put(`/grupos/${movingGrupoId}/mover`, {
+        nuevo_estado_id: targetEstadoId,
+        ubicacion_lat: newLat, ubicacion_lng: newLng,
+        notas: notas || "", fecha: fecha || undefined,
+      });
+      fetchAll();
+    } catch { alert("Error al mover grupo"); }
+    setMovingGrupoId(null);
+    setTargetEstadoId(null);
   };
 
-  const handleDialogCancel = () => {
-    setShowGroupDialog(false);
-    setGroupName("");
-    setSelectedIds(new Set());
-    setSelectionMode(false);
+  const removeFromGroup = async (grupoId: number, contId: number) => {
+    try { await api.delete(`/grupos/${grupoId}/contenedores/${contId}`); fetchAll(); }
+    catch { alert("Error al remover del grupo"); }
   };
+
+  const deleteGrupo = async (grupoId: number) => {
+    if (!confirm("¿Desagrupar todos los contenedores?")) return;
+    try { await api.delete(`/grupos/${grupoId}`); fetchAll(); }
+    catch { alert("Error al eliminar grupo"); }
+  };
+
+  const activeDragCont = useMemo(() => {
+    if (!activeDragId || activeDragId.startsWith("group-")) return null;
+    const id = parseInt(activeDragId);
+    return filteredContenedores.find((c) => c.id === id) || null;
+  }, [activeDragId, filteredContenedores]);
 
   if (loading) {
     return (
@@ -288,74 +287,64 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
   }
 
   const movingGrupo = movingGrupoId ? grupos.find((g) => g.id === movingGrupoId) : null;
+  const deletingGrupo = deletingGrupoId ? grupos.find((g) => g.id === deletingGrupoId) : null;
 
   return (
     <>
-      <div className="mb-2 flex items-center gap-2">
-        <Button
-          variant={selectionMode ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }}
-        >
-          <Layers className="mr-1 h-3 w-3" />
-          {selectionMode ? "Salir de agrupar" : "Agrupar"}
-        </Button>
-        {selectionMode && selectedIds.size >= 2 && (
-          <Button size="sm" onClick={() => setShowGroupDialog(true)}>
-            Agrupar seleccionados ({selectedIds.size})
-          </Button>
-        )}
-        {selectionMode && (
-          <span className="text-xs text-muted-foreground">Selecciona contenedores para agrupar</span>
-        )}
-      </div>
-
-      <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => {
+          setActiveDragId(null);
+          setOverDragId(null);
+        }}
+      >
         <div className="flex flex-col h-full">
-          <Droppable droppableId={TRASH_ID} isDropDisabled={!isDragging}>
-            {(provided, snapshot) => (
-              <div ref={provided.innerRef} {...provided.droppableProps}
-                className={cn(
-                  "mb-3 flex items-center justify-center rounded-lg border-2 border-dashed transition-all duration-200",
-                  isDragging ? "h-16 opacity-100" : "h-0 opacity-0 overflow-hidden border-transparent",
-                  snapshot.isDraggingOver ? "border-destructive bg-destructive/10" : "border-muted-foreground/30 bg-muted/20"
-                )}
-              >
-                <div className="flex items-center gap-2 text-sm">
-                  <Trash2 className={cn("h-5 w-5", snapshot.isDraggingOver ? "text-destructive" : "text-muted-foreground")} />
-                  <span className={cn(snapshot.isDraggingOver ? "text-destructive font-medium" : "text-muted-foreground")}>
-                    Soltar aquí para eliminar
-                  </span>
-                </div>
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-
-          <div className="flex-1 min-h-0 overflow-auto" id="kanban-scroll-container" ref={scrollRef}>
+          <TrashDropZone active={activeDragId !== null} />
+          <div className="flex-1 min-h-0 overflow-auto">
             <div className="flex gap-3 min-h-full pb-4">
               {estados.map((estado) => (
-                <Droppable key={estado.id} droppableId={estado.id.toString()} type="CONTENEDOR" isCombineEnabled={!selectionMode}>
-                  {(provided, snapshot) => (
-                    <KanbanColumn
-                      estado={estado}
-                      contenedores={filteredContenedores.filter((c) => c.estado_id === estado.id && !groupedContIds.has(c.id))}
-                      grupos={grupos.filter((g) => g.estado_id === estado.id)}
-                      provided={provided}
-                      snapshot={snapshot}
-                      selectionMode={selectionMode}
-                      selectedIds={selectedIds}
-                      onToggleSelect={toggleSelect}
-                      onRemoveFromGroup={removeFromGroup}
-                      onDeleteGroup={deleteGrupo}
-                    />
+                <KanbanColumn
+                  key={estado.id}
+                  estado={estado}
+                  contenedores={filteredContenedores.filter((c) =>
+                    c.estado_id === estado.id && !groupedContIds.has(c.id)
                   )}
-                </Droppable>
+                  grupos={grupos.filter((g) => g.estado_id === estado.id)}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  onToggleSelect={onToggleSelect}
+                  onDeleteGroup={deleteGrupo}
+                  onRemoveFromGroup={removeFromGroup}
+                  groupTargetId={
+                    activeDragId && /^\d+$/.test(activeDragId) && overDragId && /^\d+$/.test(overDragId) && activeDragId !== overDragId
+                      ? Number(overDragId)
+                      : null
+                  }
+                />
               ))}
             </div>
           </div>
         </div>
-      </DragDropContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeDragId?.startsWith("group-") && grupos.find((g) => `group-${g.id}` === activeDragId) ? (
+            <div className="w-72 rounded-md border bg-card shadow-lg ring-1 ring-primary">
+              <GrupoCardPreview grupo={grupos.find((g) => `group-${g.id}` === activeDragId)!} />
+            </div>
+          ) : activeDragCont ? (
+            <div className="rounded-md border bg-card p-3 shadow-lg ring-1 ring-primary w-72">
+              <div className="font-mono text-sm font-bold">{activeDragCont.matricula}</div>
+              {activeDragCont.cliente && (
+                <div className="text-xs text-muted-foreground">{activeDragCont.cliente.nombre}</div>
+              )}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {movingContenedor && targetEstadoId !== null && (
         <MovimientoDialog
@@ -365,7 +354,6 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
           onCancel={() => { setMovingContenedor(null); setTargetEstadoId(null); }}
         />
       )}
-
       {movingGrupo && targetEstadoId !== null && (
         <MovimientoDialog
           contenedor={{ id: movingGrupo.id, matricula: movingGrupo.nombre }}
@@ -374,7 +362,6 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
           onCancel={() => { setMovingGrupoId(null); setTargetEstadoId(null); }}
         />
       )}
-
       {deletingContenedor && (
         <MovimientoDialog
           contenedor={deletingContenedor}
@@ -384,28 +371,88 @@ export function KanbanBoard({ filters }: { filters: KanbanFilters }) {
           isDelete
         />
       )}
+      {deletingGrupo && (
+        <MovimientoDialog
+          contenedor={{ id: deletingGrupo.id, matricula: deletingGrupo.nombre }}
+          targetEstado="🗑️ Eliminar grupo"
+          onConfirm={() => handleDeleteGrupoConfirm()}
+          onCancel={() => setDeletingGrupoId(null)}
+          isDelete
+        />
+      )}
 
-      <Dialog open={showGroupDialog} onOpenChange={(open) => { if (!open) handleDialogCancel(); }}>
+      <Dialog open={!!groupingPair} onOpenChange={(open) => !open && setGroupingPair(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Crear Grupo</DialogTitle>
+            <DialogTitle>Crear grupo</DialogTitle>
+            <DialogDescription>
+              Has colocado dos contenedores juntos. Indica el nombre del grupo.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Input
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              placeholder="Nombre del grupo"
-            />
-            <p className="text-xs text-muted-foreground">{selectedIds.size} contenedores seleccionados</p>
-          </div>
+          <Input
+            value={groupName}
+            onChange={(event) => setGroupName(event.target.value)}
+            placeholder="Nombre del grupo"
+          />
           <DialogFooter>
-            <Button variant="outline" onClick={handleDialogCancel}>
+            <Button variant="outline" onClick={() => setGroupingPair(null)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreateGroup}>Agrupar</Button>
+            <Button onClick={handleCreateDraggedGroup}>Crear grupo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+function TrashDropZone({ active }: { active: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: TRASH_ID });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "fixed left-0 right-0 top-14 z-50 mx-4 flex h-14 items-center justify-center rounded-lg border-2 border-dashed px-6 transition-opacity duration-200 backdrop-blur-sm",
+        active ? "opacity-100" : "pointer-events-none opacity-0",
+        isOver
+          ? "border-destructive bg-destructive/20 text-destructive shadow-lg"
+          : "border-muted-foreground/40 bg-card/90 text-muted-foreground shadow"
+      )}
+    >
+      <div className="flex items-center gap-2 text-sm">
+        <Trash2 className="h-5 w-5" />
+        <span>Soltar aquí para eliminar</span>
+      </div>
+    </div>
+  );
+}
+
+function GrupoCardPreview({ grupo }: { grupo: Grupo }) {
+  return (
+    <div className="rounded-md border-2 border-dashed bg-card p-3">
+      <div className="text-sm font-bold">{grupo.nombre}</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {grupo.contenedores.length} contenedores
+      </div>
+    </div>
+  );
+}
+
+function _findParentEstado(
+  overId: string,
+  estados: Estado[],
+  contenedores: Contenedor[],
+  grupos: Grupo[],
+  groupedContIds: Set<number>
+): number | null {
+  for (const e of estados) {
+    const eId = `estado-${e.id}`;
+    if (overId === eId) return e.id;
+    const colConts = contenedores.filter((c) => c.estado_id === e.id && !groupedContIds.has(c.id));
+    if (colConts.some((c) => c.id.toString() === overId)) return e.id;
+    const colGrupos = grupos.filter((g) => g.estado_id === e.id);
+    if (colGrupos.some((g) => `group-${g.id}` === overId)) return e.id;
+  }
+  return null;
 }

@@ -1,14 +1,17 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import { LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Navbar() {
   const { user, logout } = useAuth();
+  const { leftContent, rightContent } = usePageControls();
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-      <div />
+      <div className="flex items-center gap-3">{leftContent}</div>
       <div className="flex items-center gap-4">
+        {rightContent}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <User className="h-4 w-4" />
           <span>{user?.username}</span>

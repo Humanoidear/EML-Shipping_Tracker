@@ -1,14 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,13 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, ScanLine, Search, X, CheckCircle, AlertTriangle, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Plus, ScanLine, Search, X, CheckCircle, AlertTriangle,
+  Filter, Layers,
+} from "lucide-react";
 import { KanbanBoard, type KanbanFilters } from "@/components/kanban/KanbanBoard";
 import { QRScanner } from "@/components/qr/QRScanner";
 import api from "@/lib/api";
@@ -42,16 +40,108 @@ interface Cliente {
 
 const TIPO_ISO_OPTIONS = ["20GP", "40GP", "40HC", "45HC", "20OT", "40OT", "20RE", "40RE"];
 
+function FilterPopover({
+  filters, setFilters, clientesList,
+}: {
+  filters: KanbanFilters;
+  setFilters: React.Dispatch<React.SetStateAction<KanbanFilters>>;
+  clientesList: Cliente[];
+}) {
+  const activeCount =
+    (filters.matricula ? 1 : 0) +
+    (filters.clienteId !== "todos" ? 1 : 0) +
+    (filters.tipoIso !== "todos" ? 1 : 0) +
+    (filters.soloPeligrosa ? 1 : 0);
+
+  const clearFilters = () => {
+    setFilters({ matricula: "", clienteId: "todos", tipoIso: "todos", soloPeligrosa: false });
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Filter className="h-4 w-4" />
+          Filtros
+          {activeCount > 0 && (
+            <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-xs">{activeCount}</Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-4" align="start">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Filtros</span>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="mr-1 h-3 w-3" />
+              Limpiar
+            </Button>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Matrícula</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8 h-8 text-sm"
+                  value={filters.matricula}
+                  onChange={(e) => setFilters((f) => ({ ...f, matricula: e.target.value }))}
+                  placeholder="Buscar..."
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Cliente</Label>
+              <Select value={filters.clienteId} onValueChange={(v) => setFilters((f) => ({ ...f, clienteId: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {clientesList.map((c) => (
+                    <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo ISO</Label>
+              <Select value={filters.tipoIso} onValueChange={(v) => setFilters((f) => ({ ...f, tipoIso: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {TIPO_ISO_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Solo mercancía peligrosa</Label>
+              <Switch
+                checked={filters.soloPeligrosa}
+                onCheckedChange={(v) => setFilters((f) => ({ ...f, soloPeligrosa: v }))}
+              />
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { setLeftContent, setRightContent } = usePageControls();
   const [refreshKey, setRefreshKey] = useState(0);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [estados, setEstados] = useState<Estado[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showGroupDialog, setShowGroupDialog] = useState(false);
+  const [groupName, setGroupName] = useState("");
   const [filters, setFilters] = useState<KanbanFilters>({
     matricula: "",
     clienteId: "todos",
@@ -60,26 +150,8 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    api
-      .get("/clientes")
-      .then((res) => setClientesList(res.data))
-      .catch(console.error);
+    api.get("/clientes").then((res) => setClientesList(res.data)).catch(console.error);
   }, []);
-
-  const activeFilterCount =
-    (filters.matricula ? 1 : 0) +
-    (filters.clienteId !== "todos" ? 1 : 0) +
-    (filters.tipoIso !== "todos" ? 1 : 0) +
-    (filters.soloPeligrosa ? 1 : 0);
-
-  const clearFilters = () => {
-    setFilters({
-      matricula: "",
-      clienteId: "todos",
-      tipoIso: "todos",
-      soloPeligrosa: false,
-    });
-  };
 
   const openCreateDialog = async () => {
     try {
@@ -87,170 +159,133 @@ export default function Dashboard() {
       setEstados(estRes.data);
       setClientes(cliRes.data);
       setShowCreateDialog(true);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch { console.error("Error opening create dialog"); }
   };
 
   const handleQRScanned = (matricula: string) => {
     setShowScanner(false);
-    api
-      .get(`/contenedores/qr/${matricula}`)
-      .then((res) => {
-        if (res.data?.id) {
-          navigate(`/contenedores/${res.data.id}`);
-        } else {
-          console.error("QR: no id in response", res.data);
-        }
-      })
-      .catch((err) => {
-        console.error("QR scan error:", err);
-        alert("Contenedor no encontrado");
-      });
+    api.get(`/contenedores/qr/${matricula}`).then((res) => {
+      if (res.data?.id) navigate(`/contenedores/${res.data.id}`);
+    }).catch(() => alert("Contenedor no encontrado"));
   };
+
+  const handleCreateGroup = async () => {
+    if (selectedIds.size < 2) return;
+    try {
+      await api.post("/grupos", {
+        nombre: groupName || "Grupo sin nombre",
+        contenedor_ids: Array.from(selectedIds),
+        estado_id: null,
+      });
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+      setShowGroupDialog(false);
+      setGroupName("");
+      setRefreshKey((k) => k + 1);
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Error al crear grupo");
+    }
+  };
+
+  useEffect(() => {
+    if (!selectionMode) setSelectedIds(new Set());
+  }, [selectionMode]);
+
+  const leftControls = (
+    <div className="flex items-center gap-2">
+      <h1 className="text-lg font-bold">Contenedores</h1>
+      <FilterPopover filters={filters} setFilters={setFilters} clientesList={clientesList} />
+      <Button
+        variant={selectionMode ? "default" : "outline"}
+        size="sm"
+        onClick={() => setSelectionMode(!selectionMode)}
+      >
+        <Layers className="mr-1 h-3 w-3" />
+        {selectionMode ? "Salir" : "Agrupar"}
+      </Button>
+      {selectionMode && selectedIds.size >= 2 && (
+        <Button size="sm" onClick={() => setShowGroupDialog(true)}>
+          Agrupar ({selectedIds.size})
+        </Button>
+      )}
+    </div>
+  );
+
+  const rightControls = (
+    <div className="flex items-center gap-2">
+      {user?.permisos?.can_scan_qr && (
+        <Button variant="outline" size="sm" onClick={() => setShowScanner(true)}>
+          <ScanLine className="mr-1 h-3 w-3" />
+          Escanear QR
+        </Button>
+      )}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogTrigger asChild>
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus className="mr-1 h-4 w-4" />
+            Nuevo
+          </Button>
+        </DialogTrigger>
+        <CreateContenedorDialog
+          estados={estados}
+          clientes={clientes}
+          onCreated={() => {
+            setShowCreateDialog(false);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      </Dialog>
+    </div>
+  );
+
+  useEffect(() => {
+    setLeftContent(leftControls);
+    setRightContent(rightControls);
+    return () => { setLeftContent(null); setRightContent(null); };
+  }, [filters, selectionMode, selectedIds.size, showCreateDialog, showScanner, clientesList, estados, clientes, user]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Panel de Contenedores</h1>
-        <div className="flex gap-2">
-          {user?.permisos?.can_scan_qr && (
-            <Button variant="outline" size="sm" onClick={() => setShowScanner(true)}>
-              <ScanLine className="mr-2 h-4 w-4" />
-              Escanear QR
-            </Button>
-          )}
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button size="sm" onClick={openCreateDialog}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo Contenedor
-              </Button>
-            </DialogTrigger>
-            <CreateContenedorDialog
-              estados={estados}
-              clientes={clientes}
-              onCreated={() => {
-                setShowCreateDialog(false);
-                setRefreshKey((k) => k + 1);
-              }}
-            />
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="mb-4 rounded-lg border bg-card">
-        <div className="flex items-center gap-2 p-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setFiltersOpen((o) => !o)}
-            className="gap-1.5"
-          >
-            <Filter className="h-4 w-4" />
-            Filtros
-            {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clearFilters}
-            className="gap-1.5"
-          >
-            <X className="h-4 w-4" />
-            Limpiar filtros
-            {activeFilterCount > 0 && (
-              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-xs">
-                {activeFilterCount}
-              </Badge>
-            )}
-          </Button>
-        </div>
-        <div
-          className={`
-            overflow-hidden transition-all duration-200 ease-in-out
-            ${filtersOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}
-          `}
-        >
-          <div className="flex flex-wrap items-end gap-3 border-t px-3 pb-3 pt-3">
-            <div className="flex-1" style={{ minWidth: 200 }}>
-              <Label className="mb-1.5 block text-xs">Matrícula</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar matrícula..."
-                  value={filters.matricula}
-                  onChange={(e) => setFilters((f) => ({ ...f, matricula: e.target.value }))}
-                  className="pl-8"
-                />
-              </div>
-            </div>
-            <div style={{ minWidth: 160 }}>
-              <Label className="mb-1.5 block text-xs">Cliente</Label>
-              <Select
-                value={filters.clienteId}
-                onValueChange={(v) => setFilters((f) => ({ ...f, clienteId: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {clientesList.map((c) => (
-                    <SelectItem key={c.id} value={c.id.toString()}>
-                      {c.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div style={{ minWidth: 140 }}>
-              <Label className="mb-1.5 block text-xs">Tipo ISO</Label>
-              <Select
-                value={filters.tipoIso}
-                onValueChange={(v) => setFilters((f) => ({ ...f, tipoIso: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {TIPO_ISO_OPTIONS.map((iso) => (
-                    <SelectItem key={iso} value={iso}>
-                      {iso}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2 rounded-md border px-3 py-2">
-              <Label className="cursor-pointer text-xs">Solo mercancía peligrosa</Label>
-              <Switch
-                checked={filters.soloPeligrosa}
-                onCheckedChange={(v) => setFilters((f) => ({ ...f, soloPeligrosa: v }))}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="flex-1 overflow-hidden">
-        <KanbanBoard key={refreshKey} filters={filters} />
+        <KanbanBoard
+          key={refreshKey}
+          filters={filters}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={(id) => setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+          })}
+        />
       </div>
       {showScanner && (
-        <QRScanner
-          onScan={handleQRScanned}
-          onClose={() => setShowScanner(false)}
-        />
+        <QRScanner onScan={handleQRScanned} onClose={() => setShowScanner(false)} />
       )}
+      <Dialog open={showGroupDialog} onOpenChange={setShowGroupDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Crear Grupo</DialogTitle>
+            <DialogDescription>{selectedIds.size} contenedores seleccionados</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Nombre del grupo" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowGroupDialog(false); setGroupName(""); }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateGroup}>Agrupar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function CreateContenedorDialog({
-  estados,
-  clientes,
-  onCreated,
+  estados, clientes, onCreated,
 }: {
   estados: Estado[];
   clientes: Cliente[];
@@ -264,10 +299,14 @@ function CreateContenedorDialog({
   const [peligrosa, setPeligrosa] = useState(false);
   const [peso, setPeso] = useState("");
   const [mercancia, setMercancia] = useState("");
+  const [destino, setDestino] = useState("");
   const [notas, setNotas] = useState("");
+  const [alquilado, setAlquilado] = useState(false);
+  const [fechaInicioAlquiler, setFechaInicioAlquiler] = useState("");
+  const [fechaDevolucionAlquiler, setFechaDevolucionAlquiler] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const matriculaValida = matricula.length > 0 ? isValidMatricula(matricula) : null;
+  const matriculaValid = isValidMatricula(matricula);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,11 +317,15 @@ function CreateContenedorDialog({
         cliente_id: clienteId ? parseInt(clienteId) : null,
         tipo_iso: tipoIso,
         origen,
+        destino,
         estado_id: estadoId ? parseInt(estadoId) : null,
         mercancia_peligrosa: peligrosa,
         peso_kg: peso ? parseFloat(peso) : null,
         mercancia,
         notas,
+        alquilado,
+        fecha_inicio_alquiler: alquilado && fechaInicioAlquiler ? new Date(fechaInicioAlquiler).toISOString() : null,
+        fecha_devolucion_alquiler: alquilado && fechaDevolucionAlquiler ? new Date(fechaDevolucionAlquiler).toISOString() : null,
       });
       onCreated();
     } catch (err: any) {
@@ -302,39 +345,29 @@ function CreateContenedorDialog({
         <div className="space-y-2">
           <Label htmlFor="matricula">Matrícula *</Label>
           <div className="relative">
-            <Input
-              id="matricula"
-              value={matricula}
-              onChange={(e) => setMatricula(e.target.value)}
-              placeholder="ABCD1234567"
-              required
-              className="pr-9"
-            />
-            {matriculaValida === true && (
-              <CheckCircle className="absolute right-2.5 top-1/2 h-5 w-5 -translate-y-1/2 text-green-500" />
-            )}
-            {matriculaValida === false && (
-              <AlertTriangle className="absolute right-2.5 top-1/2 h-5 w-5 -translate-y-1/2 text-amber-500" />
+            <Input id="matricula" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="ABCD1234567" required />
+            {matricula && (
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                {matriculaValid ? (
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
+                )}
+              </span>
             )}
           </div>
-          {matriculaValida === false && (
-            <p className="text-xs text-amber-600">
-              El formato no coincide con ISO 6346 (4 letras + 7 dígitos)
-            </p>
+          {matricula && !matriculaValid && (
+            <p className="text-xs text-orange-500">Formato ISO 6346 no detectado</p>
           )}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Cliente</Label>
             <Select value={clienteId} onValueChange={setClienteId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar..." />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
               <SelectContent>
                 {clientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id.toString()}>
-                    {c.nombre}
-                  </SelectItem>
+                  <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -345,48 +378,45 @@ function CreateContenedorDialog({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Origen</Label>
-            <Input value={origen} onChange={(e) => setOrigen(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Estado inicial</Label>
-            <Select value={estadoId} onValueChange={setEstadoId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar..." />
-              </SelectTrigger>
-              <SelectContent>
-                {estados.map((e) => (
-                  <SelectItem key={e.id} value={e.id.toString()}>
-                    {e.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="space-y-2"><Label>Origen</Label><Input value={origen} onChange={(e) => setOrigen(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Destino</Label><Input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Colón - Mariel" /></div>
         </div>
         <div className="space-y-2">
-          <Label>Peso (KG)</Label>
-          <Input type="number" value={peso} onChange={(e) => setPeso(e.target.value)} />
+          <Label>Estado inicial</Label>
+          <Select value={estadoId} onValueChange={setEstadoId}>
+            <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+            <SelectContent>
+              {estados.map((e) => (
+                <SelectItem key={e.id} value={e.id.toString()}>{e.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="space-y-2">
-          <Label>Mercancía</Label>
-          <Input value={mercancia} onChange={(e) => setMercancia(e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>Notas</Label>
-          <Input value={notas} onChange={(e) => setNotas(e.target.value)} />
-        </div>
+        <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={peso} onChange={(e) => setPeso(e.target.value)} /></div>
+        <div className="space-y-2"><Label>Mercancía</Label><Input value={mercancia} onChange={(e) => setMercancia(e.target.value)} /></div>
+        <div className="space-y-2"><Label>Notas</Label><Input value={notas} onChange={(e) => setNotas(e.target.value)} /></div>
         <div className="flex items-center justify-between rounded-md border p-3">
-          <Label htmlFor="peligrosa" className="cursor-pointer">
-            Mercancía peligrosa
-          </Label>
+          <Label htmlFor="peligrosa" className="cursor-pointer">Mercancía peligrosa</Label>
           <Switch id="peligrosa" checked={peligrosa} onCheckedChange={setPeligrosa} />
         </div>
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <Label htmlFor="alquilado" className="cursor-pointer">Alquilado</Label>
+          <Switch id="alquilado" checked={alquilado} onCheckedChange={setAlquilado} />
+        </div>
+        {alquilado && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Inicio alquiler</Label>
+              <Input type="datetime-local" value={fechaInicioAlquiler} onChange={(e) => setFechaInicioAlquiler(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Devolución alquiler</Label>
+              <Input type="datetime-local" value={fechaDevolucionAlquiler} onChange={(e) => setFechaDevolucionAlquiler(e.target.value)} />
+            </div>
+          </div>
+        )}
         <DialogFooter>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Creando..." : "Crear Contenedor"}
-          </Button>
+          <Button type="submit" disabled={loading}>{loading ? "Creando..." : "Crear Contenedor"}</Button>
         </DialogFooter>
       </form>
     </DialogContent>

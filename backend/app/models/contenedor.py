@@ -15,7 +15,11 @@ class Contenedor(db.Model):
     mercancia_peligrosa = db.Column(db.Boolean, default=False)
     peso_kg = db.Column(db.Numeric(10, 2))
     mercancia = db.Column(db.String(300))
+    destino = db.Column(db.String(300))
     notas = db.Column(db.Text)
+    alquilado = db.Column(db.Boolean, default=False)
+    fecha_inicio_alquiler = db.Column(db.DateTime, nullable=True)
+    fecha_devolucion_alquiler = db.Column(db.DateTime, nullable=True)
     ubicacion_lat = db.Column(db.Numeric(10, 7))
     ubicacion_lng = db.Column(db.Numeric(10, 7))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -39,6 +43,10 @@ class Contenedor(db.Model):
             "mercancia_peligrosa": self.mercancia_peligrosa,
             "peso_kg": float(self.peso_kg) if self.peso_kg else None,
             "mercancia": self.mercancia,
+            "destino": self.destino,
+            "alquilado": self.alquilado,
+            "fecha_inicio_alquiler": self.fecha_inicio_alquiler.isoformat() if self.fecha_inicio_alquiler else None,
+            "fecha_devolucion_alquiler": self.fecha_devolucion_alquiler.isoformat() if self.fecha_devolucion_alquiler else None,
             "notas": self.notas,
             "ubicacion_lat": float(self.ubicacion_lat) if self.ubicacion_lat else None,
             "ubicacion_lng": float(self.ubicacion_lng) if self.ubicacion_lng else None,

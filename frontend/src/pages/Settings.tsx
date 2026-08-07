@@ -5,18 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Settings2, UserCog } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCog, User, Shield } from "lucide-react";
 
 interface Estado {
   id: number;
@@ -36,7 +32,7 @@ interface Cliente {
 
 export default function Settings() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.permisos?.can_manage_estados;
+  const isAdmin = user?.role === "admin";
 
   return (
     <div className="flex flex-col gap-6">
@@ -45,6 +41,7 @@ export default function Settings() {
       <Tabs defaultValue="profile">
         <TabsList>
           <TabsTrigger value="profile">Perfil</TabsTrigger>
+          {isAdmin && <TabsTrigger value="users">Usuarios</TabsTrigger>}
           {isAdmin && <TabsTrigger value="estados">Estados</TabsTrigger>}
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
         </TabsList>
@@ -52,6 +49,12 @@ export default function Settings() {
         <TabsContent value="profile">
           <ProfileSettings />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="users">
+            <UserManagement />
+          </TabsContent>
+        )}
 
         {isAdmin && (
           <TabsContent value="estados">
@@ -380,5 +383,169 @@ function ClienteFormDialog({
         </DialogFooter>
       </form>
     </DialogContent>
+  );
+}
+
+function UserManagement() {
+  const { user: currentUser } = useAuth();
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserData | null>(null);
+  const [showPermisos, setShowPermisos] = useState<UserData | null>(null);
+
+  useEffect(() => { api.get("/users").then((res) => setUsers(res.data)); }, []);
+
+  const handleDelete = async (userId: number) => {
+    if (!confirm("¿Eliminar este usuario?")) return;
+    await api.delete(`/users/${userId}`);
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Gestión de Usuarios</CardTitle>
+          <CardDescription>Administra los usuarios del sistema</CardDescription>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Nuevo Usuario
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4">
+          {users.map((u) => (
+            <Card key={u.id}>
+              <CardContent className="flex items-center justify-between p-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{u.username}</span>
+                      <Badge variant={u.role === "admin" ? "default" : "secondary"}>
+                        {u.role === "admin" ? "Admin" : "Operador"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{u.email}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowPermisos(u)}>
+                    <Shield className="mr-1 h-3 w-3" /> Permisos
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setEditingUser(u)}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  {u.id !== currentUser?.id && (
+                    <Button variant="outline" size="sm" onClick={() => handleDelete(u.id)}>
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="sm:max-w-md">
+          <UserFormFields onSaved={(u) => { setUsers((prev) => [...prev, u]); setShowCreate(false); }} />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          {editingUser && (
+            <UserFormFields user={editingUser} onSaved={(updated) => {
+              setUsers((prev) => prev.map((us) => (us.id === updated.id ? updated : us)));
+              setEditingUser(null);
+            }} />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!showPermisos} onOpenChange={() => setShowPermisos(null)}>
+        <DialogContent className="sm:max-w-md">
+          {showPermisos && (
+            <UserPermisosForm user={showPermisos} onSaved={(updated) => {
+              setUsers((prev) => prev.map((us) => (us.id === updated.id ? updated : us)));
+              setShowPermisos(null);
+            }} onClose={() => setShowPermisos(null)} />
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+interface UserData {
+  id: number; username: string; email: string; role: string;
+  permisos: { can_manage_users: boolean; can_manage_clientes: boolean; can_manage_estados: boolean; can_view_reports: boolean; can_view_globe: boolean; can_export_data: boolean; can_scan_qr: boolean; } | null;
+}
+
+function UserFormFields({ user, onSaved }: { user?: UserData; onSaved: (u: UserData) => void }) {
+  const [username, setUsername] = useState(user?.username || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState(user?.role || "operator");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (user) {
+        const res = await api.put(`/users/${user.id}`, { username, email, role, ...(password ? { password } : {}) });
+        onSaved(res.data);
+      } else {
+        const res = await api.post("/auth/register", { username, email, password, role });
+        onSaved(res.data);
+      }
+    } catch (err: any) { alert(err.response?.data?.error || "Error"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{user ? "Editar Usuario" : "Nuevo Usuario"}</DialogTitle>
+        <DialogDescription>{user ? "Modifica los datos del usuario." : "Crea un nuevo usuario en el sistema."}</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2"><Label>Usuario *</Label><Input value={username} onChange={(e) => setUsername(e.target.value)} required /></div>
+        <div className="space-y-2"><Label>Email *</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+        <div className="space-y-2"><Label>Contraseña {!user && "*"}</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={user ? "Dejar vacío para no cambiar" : ""} required={!user} /></div>
+        <div className="space-y-2"><Label>Rol</Label>
+          <Select value={role} onValueChange={setRole}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="operator">Operador</SelectItem><SelectItem value="admin">Administrador</SelectItem></SelectContent>
+          </Select>
+        </div>
+        <DialogFooter><Button type="submit" disabled={loading}>{loading ? "Guardando..." : user ? "Guardar Cambios" : "Crear Usuario"}</Button></DialogFooter>
+      </form>
+    </>
+  );
+}
+
+function UserPermisosForm({ user, onSaved, onClose }: { user: UserData; onSaved: (u: UserData) => void; onClose: () => void }) {
+  const [permisos, setPermisos] = useState(user.permisos || { can_manage_users: false, can_manage_clientes: true, can_manage_estados: false, can_view_reports: false, can_view_globe: false, can_export_data: false, can_scan_qr: true });
+  const toggle = (key: string) => setPermisos((prev) => ({ ...prev, [key]: !(prev as any)[key] }));
+  const handleSave = async () => { const res = await api.put(`/users/${user.id}/permisos`, permisos); onSaved(res.data); };
+
+  const permLabels: Record<string, string> = { can_manage_users: "Gestionar usuarios", can_manage_clientes: "Gestionar clientes", can_manage_estados: "Gestionar estados", can_view_reports: "Ver reportes", can_view_globe: "Ver globo 3D", can_export_data: "Exportar datos", can_scan_qr: "Escanear QR" };
+
+  return (
+    <>
+      <DialogHeader><DialogTitle>Permisos de {user.username}</DialogTitle><DialogDescription>Controla lo que este usuario puede hacer.</DialogDescription></DialogHeader>
+      <div className="space-y-3">
+        {Object.entries(permLabels).map(([key, label]) => (
+          <div key={key} className="flex items-center justify-between rounded-md border p-3">
+            <Label className="cursor-pointer">{label}</Label>
+            <Switch checked={(permisos as any)[key]} onCheckedChange={() => toggle(key)} disabled={user.role === "admin" && key === "can_manage_users"} />
+          </div>
+        ))}
+      </div>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={handleSave}>Guardar Permisos</Button></DialogFooter>
+    </>
   );
 }

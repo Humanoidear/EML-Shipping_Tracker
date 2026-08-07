@@ -34,7 +34,7 @@ def create_app(config_class=Config):
     register_error_handlers(app)
 
     with app.app_context():
-        from .models import user, cliente, estado, contenedor, movimiento, permiso, vista, grupo
+        from .models import user, cliente, estado, contenedor, movimiento, permiso, vista, grupo, adjunto
         db.create_all()
         _seed_estados()
 

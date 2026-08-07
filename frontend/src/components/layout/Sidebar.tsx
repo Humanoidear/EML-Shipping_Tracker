@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  LayoutDashboard, Users, BarChart3, Globe, Settings, Ship,
+  LayoutDashboard, BarChart3, Globe, Settings,
   Shield, PanelLeftClose, PanelLeftOpen, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,6 @@ import logoSvg from "/img/logo.svg";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Contenedores" },
   { to: "/admin", icon: Shield, label: "Admin", adminOnly: true },
-  { to: "/admin/users", icon: Users, label: "Usuarios", adminOnly: true },
   { to: "/admin/reports", icon: BarChart3, label: "Reportes", adminOnly: true },
   { to: "/admin/globe", icon: Globe, label: "Globo 3D", adminOnly: true },
   { to: "/settings", icon: Settings, label: "Configuración" },
@@ -47,7 +46,7 @@ export function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === "/"}
+              end={true}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors",
