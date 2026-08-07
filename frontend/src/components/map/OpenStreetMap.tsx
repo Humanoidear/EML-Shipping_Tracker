@@ -24,7 +24,9 @@ interface Props {
   lng?: number;
   onLocationSelect?: (lat: number, lng: number) => void;
   onMarkerDrag?: (id: string | number | undefined, lat: number, lng: number) => void;
+  onMarkerClick?: (id: string | number | undefined) => void;
   markers?: MarkerData[];
+  route?: [number, number][];
   center?: [number, number];
   zoom?: number;
   focusLat?: number;
@@ -32,8 +34,8 @@ interface Props {
 }
 
 export function OpenStreetMap({
-  lat, lng, onLocationSelect, onMarkerDrag, markers = [],
-  center, zoom = 13, focusLat, focusLng,
+  lat, lng, onLocationSelect, onMarkerDrag, onMarkerClick, markers = [],
+  route, center, zoom = 13, focusLat, focusLng,
 }: Props) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,6 +103,12 @@ export function OpenStreetMap({
   useEffect(() => {
     if (!historyLayerRef.current) return;
     historyLayerRef.current.clearLayers();
+
+    if (route && route.length >= 2) {
+      L.polyline(route, { color: "#3b82f6", weight: 3, opacity: 0.8, dashArray: "6, 4" })
+        .addTo(historyLayerRef.current);
+    }
+
     markers.forEach((m) => {
       const marker = L.marker([m.lat, m.lng], { draggable: !!onMarkerDrag })
         .addTo(historyLayerRef.current!)
@@ -112,8 +120,14 @@ export function OpenStreetMap({
           onMarkerDrag(m.id, pos.lat, pos.lng);
         });
       }
+
+      if (onMarkerClick) {
+        marker.on("click", () => {
+          onMarkerClick(m.id);
+        });
+      }
     });
-  }, [markers, onMarkerDrag]);
+  }, [markers, onMarkerDrag, route]);
 
   useEffect(() => {
     if (lat && lng && selectionLayerRef.current) {

@@ -55,9 +55,22 @@ def delete_estado(current_user, estado_id):
     estado = Estado.query.get_or_404(estado_id)
     if estado.is_default:
         return jsonify({"error": "No se puede eliminar un estado por defecto"}), 400
-    if estado.contenedores:
-        return jsonify({"error": "No se puede eliminar un estado con contenedores asignados"}), 400
+
+    cont_count = len(estado.contenedores)
+    for cont in estado.contenedores:
+        cont.estado_id = None
+
+    from ..models.movimiento import Movimiento
+    Movimiento.query.filter(
+        (Movimiento.estado_anterior_id == estado_id) | (Movimiento.estado_nuevo_id == estado_id)
+    ).update(
+        {
+            Movimiento.estado_anterior_id: None,
+            Movimiento.estado_nuevo_id: None,
+        },
+        synchronize_session=False,
+    )
 
     db.session.delete(estado)
     db.session.commit()
-    return jsonify({"message": "Estado eliminado"})
+    return jsonify({"message": f"Estado eliminado. {cont_count} contenedor(es) desasignado(s).", "affected": cont_count})

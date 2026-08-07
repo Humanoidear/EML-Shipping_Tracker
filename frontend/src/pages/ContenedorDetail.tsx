@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import api from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,9 +24,44 @@ import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+
+async function captureMapImage(coords: { ubicacion_lat: number; ubicacion_lng: number }[]): Promise<string | null> {
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:-10000px;top:0;width:700px;height:460px;z-index:-1;";
+  document.body.appendChild(el);
+
+  try {
+    const map = L.map(el).setView([coords[0].ubicacion_lat, coords[0].ubicacion_lng], 4);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "OSM",
+    }).addTo(map);
+
+    const latlngs = coords.map((c) => [c.ubicacion_lat, c.ubicacion_lng] as [number, number]);
+    L.polyline(latlngs, { color: "#3b82f6", weight: 3 }).addTo(map);
+    latlngs.forEach(([lat, lng]) => {
+      L.circleMarker([lat, lng], { radius: 5, color: "#f59e0b", fillColor: "#f59e0b", fillOpacity: 1 }).addTo(map);
+    });
+    if (latlngs.length > 1) {
+      map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
+    }
+
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const canvas = await html2canvas(el, { useCORS: true, scale: 1.5 });
+    map.remove();
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch {
+    try { L.map(el).remove(); } catch { /* noop */ }
+    return null;
+  } finally {
+    el.remove();
+  }
+}
 
 interface Contenedor {
   id: number;
@@ -84,6 +120,7 @@ interface Grupo {
 export default function ContenedorDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { setLeftContent } = usePageControls();
   const [contenedor, setContenedor] = useState<Contenedor | null>(null);
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [tiempoRuta, setTiempoRuta] = useState<TiempoRuta | null>(null);
@@ -92,6 +129,14 @@ export default function ContenedorDetail() {
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [activeTab, setActiveTab] = useState("info");
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [focusedLocationId, setFocusedLocationId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (focusedLocationId != null) {
+      const el = document.getElementById(`loc-${focusedLocationId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusedLocationId]);
   const contenedorRef = useRef(contenedor);
   contenedorRef.current = contenedor;
 
@@ -125,6 +170,15 @@ export default function ContenedorDetail() {
   }, [id]);
 
   useEffect(() => { fetchData(); }, [id]);
+
+  useEffect(() => {
+    setLeftContent(
+      <h1 className="text-lg font-bold">
+        {contenedor ? contenedor.matricula : "Contenedor"}
+      </h1>
+    );
+    return () => setLeftContent(null);
+  }, [contenedor, setLeftContent]);
 
   const containerGrupo = useMemo(() => {
     if (!contenedor) return null;
@@ -263,25 +317,214 @@ export default function ContenedorDetail() {
   };
 
   const handleExportPDF = async () => {
-    if (!pageRef.current || !contenedor) return;
-    const canvas = await html2canvas(pageRef.current, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL("image/png");
+    if (!contenedor) return;
     const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 0;
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 14;
+    const contentW = pageW - margin * 2;
+    let y = 0;
 
-    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
+    // Light theme palette
+    const PRIMARY: [number, number, number] = [3, 105, 161];
+    const DARK: [number, number, number] = [30, 41, 59];
+    const GRAY: [number, number, number] = [100, 116, 139];
+    const LIGHT: [number, number, number] = [241, 245, 249];
 
-    while (heightLeft > 0) {
-      position = -heightLeft + imgHeight - pageHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+    const ensureSpace = (needed: number) => {
+      if (y + needed > pageH - margin) {
+        pdf.addPage();
+        y = margin;
+      }
+    };
+
+    // ---- Header band ----
+    pdf.setFillColor(...PRIMARY);
+    pdf.rect(0, 0, pageW, 26, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.text("EML Shipping Tracker", margin, 11);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text(`Informe de contenedor ${contenedor.matricula}`, margin, 18);
+    pdf.text(`Generado: ${new Date().toLocaleString("es-ES")}`, pageW - margin, 18, { align: "right" });
+    y = 34;
+
+    // ---- Section: Datos del contenedor ----
+    const sectionTitle = (title: string) => {
+      ensureSpace(16);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(...PRIMARY);
+      pdf.text(title, margin, y);
+      y += 3;
+      pdf.setDrawColor(...PRIMARY);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, y, pageW - margin, y);
+      y += 5;
+    };
+
+    const labelValue = (label: string, value: string) => {
+      ensureSpace(8);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(...GRAY);
+      pdf.text(label, margin, y);
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(...DARK);
+      pdf.text(value, margin + 50, y);
+      y += 6;
+    };
+
+    sectionTitle("Datos del Contenedor");
+    labelValue("Matrícula:", contenedor.matricula);
+    labelValue("Cliente:", contenedor.cliente?.nombre || "-");
+    labelValue("Tipo ISO:", contenedor.tipo_iso || "-");
+    labelValue("Origen:", contenedor.origen || "-");
+    labelValue("Destino:", contenedor.destino || "-");
+    labelValue("Tara (kg):", contenedor.peso_kg != null ? String(contenedor.peso_kg) : "-");
+    labelValue("Mercancía:", contenedor.mercancia || "-");
+    labelValue("Mercancía peligrosa:", contenedor.mercancia_peligrosa ? "Sí" : "No");
+    labelValue("Alquilado:", contenedor.alquilado ? "Sí" : "No");
+    if (contenedor.alquilado) {
+      labelValue("Inicio alquiler:", contenedor.fecha_inicio_alquiler ? new Date(contenedor.fecha_inicio_alquiler).toLocaleDateString("es-ES") : "-");
+      labelValue("Devolución alquiler:", contenedor.fecha_devolucion_alquiler ? new Date(contenedor.fecha_devolucion_alquiler).toLocaleDateString("es-ES") : "-");
+    }
+    labelValue("Estado actual:", contenedor.estado?.nombre || "-");
+    labelValue("Creado:", new Date(contenedor.created_at).toLocaleString("es-ES"));
+    if (tiempoRuta) {
+      labelValue("Tiempo en ruta:", `${tiempoRuta.dias} días (${tiempoRuta.horas} horas)`);
+    }
+    if (contenedor.notas) {
+      ensureSpace(8);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(...GRAY);
+      pdf.text("Notas:", margin, y);
+      y += 5;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(...DARK);
+      const notaLines = pdf.splitTextToSize(contenedor.notas, contentW);
+      pdf.text(notaLines, margin, y);
+      y += notaLines.length * 4.5 + 2;
+    }
+    y += 4;
+
+    // ---- Section: Historial de movimientos ----
+    sectionTitle("Historial de Movimientos");
+    if (movimientos.length === 0) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(...GRAY);
+      pdf.text("Sin movimientos registrados.", margin, y);
+      y += 8;
+    } else {
+      const colX = [margin, margin + 38, margin + 76, margin + 120];
+      const widths = [38, 38, 44, contentW - 120];
+      const rowHeight = 5.5;
+
+      // Table header
+      pdf.setFillColor(...LIGHT);
+      pdf.rect(margin, y - 4, contentW, 5.5, "F");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(...DARK);
+      pdf.text("Fecha", colX[0] + 1, y);
+      pdf.text("Estado anterior", colX[1] + 1, y);
+      pdf.text("Estado nuevo", colX[2] + 1, y);
+      pdf.text("Notas", colX[3] + 1, y);
+      y += 4;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      movimientos.forEach((m, i) => {
+        const fecha = m.fecha ? new Date(m.fecha).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }) : "-";
+        const prev = m.estado_anterior?.nombre || "-";
+        const next = m.estado_nuevo?.nombre || "-";
+        const notas = m.notas || "-";
+
+        const lines = Math.max(
+          pdf.splitTextToSize(fecha, widths[0]).length,
+          pdf.splitTextToSize(prev, widths[1]).length,
+          pdf.splitTextToSize(next, widths[2]).length,
+          pdf.splitTextToSize(notas, widths[3]).length
+        );
+        const h = Math.max(rowHeight, lines * 4 + 1.5);
+
+        if (y + h > pageH - margin) {
+          pdf.addPage();
+          y = margin;
+          pdf.setFillColor(...LIGHT);
+          pdf.rect(margin, y - 4, contentW, 5.5, "F");
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(...DARK);
+          pdf.text("Fecha", colX[0] + 1, y);
+          pdf.text("Estado anterior", colX[1] + 1, y);
+          pdf.text("Estado nuevo", colX[2] + 1, y);
+          pdf.text("Notas", colX[3] + 1, y);
+          y += 4;
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8);
+        }
+
+        if (i % 2 === 0) {
+          pdf.setFillColor(248, 250, 252);
+          pdf.rect(margin, y - 3.5, contentW, h, "F");
+        }
+        pdf.setTextColor(...DARK);
+        pdf.text(pdf.splitTextToSize(fecha, widths[0]), colX[0] + 1, y);
+        pdf.text(pdf.splitTextToSize(prev, widths[1]), colX[1] + 1, y);
+        pdf.text(pdf.splitTextToSize(next, widths[2]), colX[2] + 1, y);
+        pdf.text(pdf.splitTextToSize(notas, widths[3]), colX[3] + 1, y);
+        y += h + 1;
+      });
+    }
+    y += 4;
+
+    // ---- Section: Mapa de movimientos ----
+    const coords = movimientos
+      .filter((m): m is Movimiento & { ubicacion_lat: number; ubicacion_lng: number } => !!m.ubicacion_lat && !!m.ubicacion_lng);
+    sectionTitle("Mapa de Movimientos");
+    let mapDataUrl: string | null = null;
+    if (coords.length > 0) {
+      mapDataUrl = await captureMapImage(coords);
+    }
+    if (mapDataUrl) {
+      const imgW = contentW;
+      const imgH = (imgW * 0.66);
+      ensureSpace(imgH + 5);
+      try {
+        pdf.addImage(mapDataUrl, "JPEG", margin, y, imgW, imgH, undefined, "FAST");
+        y += imgH + 5;
+      } catch {
+        pdf.setFont("helvetica", "italic");
+        pdf.setFontSize(9);
+        pdf.setTextColor(...GRAY);
+        pdf.text("No se pudo incrustar el mapa en el PDF.", margin, y);
+        y += 7;
+      }
+    } else {
+      pdf.setFont("helvetica", "italic");
+      pdf.setFontSize(9);
+      pdf.setTextColor(...GRAY);
+      pdf.text(coords.length > 0 ? "No se pudo generar la imagen del mapa." : "Sin ubicaciones registradas.", margin, y);
+      y += 7;
+    }
+
+    // ---- Footer on every page ----
+    const pages = pdf.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      pdf.setPage(p);
+      pdf.setFont("helvetica", "italic");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(...GRAY);
+      pdf.text(
+        `EML Shipping Tracker — ${contenedor.matricula} — Página ${p} de ${pages}`,
+        pageW / 2, pageH - 6, { align: "center" }
+      );
     }
 
     pdf.save(`${contenedor.matricula}.pdf`);
@@ -298,6 +541,7 @@ export default function ContenedorDetail() {
   const mapMarkers = movimientos
     .filter((m) => m.ubicacion_lat && m.ubicacion_lng)
     .map((m) => ({
+      id: m.id,
       lat: m.ubicacion_lat!,
       lng: m.ubicacion_lng!,
       label: `${m.estado_nuevo?.nombre || "Ubicación"} - ${new Date(m.created_at).toLocaleDateString()}`,
@@ -545,6 +789,10 @@ export default function ContenedorDetail() {
                 center={mapCenter}
                 zoom={6}
                 onLocationSelect={handleMapClick}
+                onMarkerClick={(id) => {
+                  setFocusedLocationId(id as number);
+                  setTimeout(() => setFocusedLocationId(null), 3000);
+                }}
               />
             </div>
             <div className="w-72 flex flex-col gap-2">
@@ -562,8 +810,14 @@ export default function ContenedorDetail() {
                   </p>
                 ) : (
                   locationsWithCoords.map((mov) => (
-                    <div key={mov.id} className="flex items-center gap-2 rounded-md border p-2 text-xs">
-                      <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <div
+                      key={mov.id}
+                      id={`loc-${mov.id}`}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md border p-2 text-xs transition-colors",
+                        focusedLocationId === mov.id && "border-primary bg-primary/5 ring-1 ring-primary"
+                      )}
+                    >  <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="font-mono truncate">{mov.ubicacion_lat?.toFixed(5)}, {mov.ubicacion_lng?.toFixed(5)}</p>
                         <p className="text-muted-foreground truncate">{mov.estado_nuevo?.nombre || "Ubicación"} — {new Date(mov.created_at).toLocaleDateString()}</p>

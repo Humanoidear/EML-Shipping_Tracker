@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "@/lib/api";
+import { usePageControls } from "@/contexts/PageControlsContext";
+import { cn } from "@/lib/utils";
 import { ReportCharts } from "@/components/charts/ReportCharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -128,6 +130,13 @@ function ChartWidget({ vista }: { vista: VistaChart }) {
 const DASHBOARD_ID = "mis-vistas";
 
 export default function AdminReports() {
+  const { setLeftContent } = usePageControls();
+
+  useEffect(() => {
+    setLeftContent(<h1 className="text-lg font-bold">Reportes y Estadísticas</h1>);
+    return () => setLeftContent(null);
+  }, [setLeftContent]);
+
   const [vistas, setVistas] = useState<Vista[]>([]);
   const [vistasLoading, setVistasLoading] = useState(true);
   const [vistaTab, setVistaTab] = useState("dashboard");
@@ -258,8 +267,6 @@ export default function AdminReports() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Reportes y Estadísticas</h1>
-
       <Tabs value={vistaTab} onValueChange={setVistaTab}>
         <TabsList>
           <TabsTrigger value="dashboard">Mis Vistas</TabsTrigger>
@@ -435,6 +442,10 @@ function PredefinedReports() {
   const [tiposIso, setTiposIso] = useState<{ tipo: string; cantidad: number }[]>([]);
   const [peligrosa, setPeligrosa] = useState<{ tipo: string; cantidad: number }[]>([]);
   const [actividad, setActividad] = useState<any[]>([]);
+  const [contenedores, setContenedores] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [alquilados, setAlquilados] = useState<any[]>([]);
+  const [movimientos, setMovimientos] = useState<any[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -442,21 +453,119 @@ function PredefinedReports() {
       api.get("/reportes/tipos-iso"),
       api.get("/reportes/peligrosa"),
       api.get("/reportes/actividad"),
-    ]).then(([estRes, isoRes, pelRes, actRes]) => {
+      api.get("/contenedores"),
+      api.get("/clientes"),
+    ]).then(([estRes, isoRes, pelRes, actRes, contRes, cliRes]) => {
       setEstadoDist(estRes.data);
       setTiposIso(isoRes.data);
       setPeligrosa(pelRes.data);
       setActividad(actRes.data);
+      setContenedores(contRes.data);
+      setClientes(cliRes.data);
     });
   }, []);
 
+  const porCliente = useMemo(() => {
+    const map = new Map<string, number>();
+    contenedores.forEach((c: any) => {
+      const key = c.cliente?.nombre || "Sin cliente";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map, ([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [contenedores]);
+
+  const porDestino = useMemo(() => {
+    const map = new Map<string, number>();
+    contenedores.forEach((c: any) => {
+      if (!c.destino) return;
+      map.set(c.destino, (map.get(c.destino) || 0) + 1);
+    });
+    return Array.from(map, ([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [contenedores]);
+
+  const porOrigen = useMemo(() => {
+    const map = new Map<string, number>();
+    contenedores.forEach((c: any) => {
+      const key = c.origen || "Sin origen";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map, ([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [contenedores]);
+
+  const alquiladosData = useMemo(() => {
+    const alq = contenedores.filter((c: any) => c.alquilado);
+    const vencidos = alq.filter((c: any) => c.fecha_devolucion_alquiler && new Date(c.fecha_devolucion_alquiler) < new Date());
+    return {
+      alquilados: alq.length,
+      vencidos: vencidos.length,
+      enPlazo: alq.length - vencidos.length,
+    };
+  }, [contenedores]);
+
+  const pesoPorEstado = useMemo(() => {
+    return contenedores
+      .filter((c: any) => c.peso_kg != null && c.estado)
+      .reduce((acc: Record<string, number>, c: any) => {
+        const key = c.estado.nombre;
+        acc[key] = (acc[key] || 0) + Number(c.peso_kg);
+        return acc;
+      }, {});
+  }, [contenedores]);
+
+  const pesoData = useMemo(() =>
+    Object.entries(pesoPorEstado).map(([name, value]) => ({ name, value }))
+  , [pesoPorEstado]);
+
+  const movimientosPorDia = useMemo(() => {
+    const map = new Map<string, number>();
+    movimientos.forEach((m: any) => {
+      const day = new Date(m.created_at).toLocaleDateString("es-ES");
+      map.set(day, (map.get(day) || 0) + 1);
+    });
+    return Array.from(map, ([name, value]) => ({ name, value })).slice(-14);
+  }, [movimientos]);
+
+  const stats = useMemo(() => {
+    const conUbicacion = contenedores.filter((c: any) => c.ubicacion_lat && c.ubicacion_lng).length;
+    const conDestino = contenedores.filter((c: any) => c.destino).length;
+    return [
+      { label: "Total contenedores", value: contenedores.length },
+      { label: "Total clientes", value: clientes.length },
+      { label: "Con ubicación", value: conUbicacion },
+      { label: "Con destino", value: conDestino },
+      { label: "Alquilados", value: alquiladosData.alquilados },
+      { label: "Alquileres vencidos", value: alquiladosData.vencidos },
+    ];
+  }, [contenedores, clientes, alquiladosData]);
+
   return (
     <div className="flex flex-col gap-6">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">{s.label}</p>
+              <p className="text-2xl font-bold">{s.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <Tabs defaultValue="estados">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="estados">Distribución por Estado</TabsTrigger>
-          <TabsTrigger value="tipos">Tipos de Contenedor</TabsTrigger>
+          <TabsTrigger value="tipos">Tipos ISO</TabsTrigger>
           <TabsTrigger value="peligrosa">Mercancía Peligrosa</TabsTrigger>
+          <TabsTrigger value="clientes">Por Cliente</TabsTrigger>
+          <TabsTrigger value="destino">Por Destino</TabsTrigger>
+          <TabsTrigger value="origen">Por Origen</TabsTrigger>
+          <TabsTrigger value="alquilados">Alquilados</TabsTrigger>
+          <TabsTrigger value="peso">Tara por Estado</TabsTrigger>
+          <TabsTrigger value="movimientos">Movimientos por Día</TabsTrigger>
           <TabsTrigger value="actividad">Actividad Reciente</TabsTrigger>
         </TabsList>
 
@@ -467,10 +576,67 @@ function PredefinedReports() {
           </div>
         </TabsContent>
         <TabsContent value="tipos">
-          <ReportCharts type="bar" title="Tipos ISO" data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))} />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ReportCharts type="bar" title="Tipos ISO" data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))} />
+            <ReportCharts type="pie" title="Distribución de Tipos ISO" data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))} />
+          </div>
         </TabsContent>
         <TabsContent value="peligrosa">
           <ReportCharts type="pie" title="Mercancía Peligrosa vs Normal" data={peligrosa.map((p) => ({ name: p.tipo, value: p.cantidad }))} />
+        </TabsContent>
+        <TabsContent value="clientes">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ReportCharts type="bar" title="Contenedores por Cliente" data={porCliente} />
+            <ReportCharts type="pie" title="Distribución por Cliente" data={porCliente} />
+          </div>
+        </TabsContent>
+        <TabsContent value="destino">
+          <ReportCharts type="bar" title="Contenedores por Destino" data={porDestino} />
+        </TabsContent>
+        <TabsContent value="origen">
+          <ReportCharts type="bar" title="Contenedores por Origen" data={porOrigen} />
+        </TabsContent>
+        <TabsContent value="alquilados">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ReportCharts
+              type="pie"
+              title="Alquileres"
+              data={[
+                { name: "En plazo", value: alquiladosData.enPlazo },
+                { name: "Vencidos", value: alquiladosData.vencidos },
+              ]}
+            />
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Alquileres próximos a vencer</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {alquiladosData.alquilados === 0 && (
+                  <p className="text-sm text-muted-foreground">Sin contenedores alquilados</p>
+                )}
+                {contenedores
+                  .filter((c: any) => c.alquilado && c.fecha_devolucion_alquiler)
+                  .map((c: any) => {
+                    const venc = new Date(c.fecha_devolucion_alquiler);
+                    const days = Math.ceil((venc.getTime() - Date.now()) / 86400000);
+                    return (
+                      <div key={c.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                        <span className="font-mono">{c.matricula}</span>
+                        <span className={cn("text-xs", days < 0 ? "text-destructive font-bold" : days < 14 ? "text-orange-500" : "text-muted-foreground")}>
+                          {days < 0 ? `Vencido hace ${-days} días` : `Vence en ${days} días`} — {venc.toLocaleDateString("es-ES")}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="peso">
+          <ReportCharts type="bar" title="Tara total (kg) por Estado" data={pesoData} />
+        </TabsContent>
+        <TabsContent value="movimientos">
+          <ReportCharts type="bar" title="Movimientos por Día (últimos 14)" data={movimientosPorDia} />
         </TabsContent>
         <TabsContent value="actividad">
           <Card>

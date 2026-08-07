@@ -61,7 +61,6 @@ export default function AdminUsers() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Gestión de Usuarios</h1>
         <Button size="sm" onClick={() => setShowCreate(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo Usuario

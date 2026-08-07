@@ -8,7 +8,7 @@ class Movimiento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     contenedor_id = db.Column(db.Integer, db.ForeignKey("contenedores.id"), nullable=False)
     estado_anterior_id = db.Column(db.Integer, db.ForeignKey("estados.id"), nullable=True)
-    estado_nuevo_id = db.Column(db.Integer, db.ForeignKey("estados.id"), nullable=False)
+    estado_nuevo_id = db.Column(db.Integer, db.ForeignKey("estados.id"), nullable=True)
     ubicacion_lat = db.Column(db.Numeric(10, 7))
     ubicacion_lng = db.Column(db.Numeric(10, 7))
     notas = db.Column(db.Text)

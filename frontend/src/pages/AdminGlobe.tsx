@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import api from "@/lib/api";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import { ContainerGlobe } from "@/components/globe/ContainerGlobe";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,13 @@ interface Movimiento {
 }
 
 export default function AdminGlobe() {
+  const { setLeftContent } = usePageControls();
+
+  useEffect(() => {
+    setLeftContent(<h1 className="text-lg font-bold">Globo 3D</h1>);
+    return () => setLeftContent(null);
+  }, [setLeftContent]);
+
   const [contenedores, setContenedores] = useState<Contenedor[]>([]);
   const [selectedId, setSelectedId] = useState<string>("all");
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);

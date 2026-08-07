@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import api from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,14 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, UserCog, User, Shield } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Pencil, Trash2, UserCog, User, Shield, GripVertical } from "lucide-react";
+import {
+  DndContext, PointerSensor, useSensor, useSensors,
+  closestCenter, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Estado {
   id: number;
@@ -34,10 +42,14 @@ export default function Settings() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
+  const { setLeftContent } = usePageControls();
+  useEffect(() => {
+    setLeftContent(<h1 className="text-lg font-bold">Configuración</h1>);
+    return () => setLeftContent(null);
+  }, [setLeftContent]);
+
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Configuración</h1>
-
       <Tabs defaultValue="profile">
         <TabsList>
           <TabsTrigger value="profile">Perfil</TabsTrigger>
@@ -134,12 +146,37 @@ function EstadosSettings() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingEstado, setEditingEstado] = useState<Estado | null>(null);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  const handleReorder = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setEstados((prev) => {
+      const oldIndex = prev.findIndex((e) => e.id.toString() === active.id);
+      const newIndex = prev.findIndex((e) => e.id.toString() === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+
+      const next = Array.from(prev);
+      const [moved] = next.splice(oldIndex, 1);
+      next.splice(newIndex, 0, moved);
+
+      next.forEach((e, i) => {
+        if (e.orden !== i) {
+          api.put(`/estados/${e.id}`, { orden: i }).catch(console.error);
+        }
+      });
+      return next.map((e, i) => ({ ...e, orden: i }));
+    });
+  };
   useEffect(() => {
     api.get("/estados").then((res) => setEstados(res.data));
   }, []);
 
   const handleDelete = async (id: number) => {
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm("¿Eliminar este estado? Los contenedores asignados quedarán sin estado.")) return;
     try {
       await api.delete(`/estados/${id}`);
       setEstados((prev) => prev.filter((e) => e.id !== id));
@@ -171,29 +208,23 @@ function EstadosSettings() {
         </Dialog>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {estados.map((estado) => (
-            <div key={estado.id} className="flex items-center justify-between rounded-md border p-3">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-6 rounded" style={{ backgroundColor: estado.color }} />
-                <span className="font-medium">{estado.nombre}</span>
-                {estado.is_default && (
-                  <span className="text-xs text-muted-foreground">(por defecto)</span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="icon" onClick={() => setEditingEstado(estado)}>
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                {!estado.is_default && (
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(estado.id)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                )}
-              </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Arrastra los estados para reordenar las columnas del kanban
+        </p>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorder}>
+          <SortableContext items={estados.map((e) => e.id.toString())} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2">
+              {estados.map((estado) => (
+                <SortableEstadoItem
+                  key={estado.id}
+                  estado={estado}
+                  onEdit={() => setEditingEstado(estado)}
+                  onDelete={handleDelete}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       </CardContent>
 
       <Dialog open={!!editingEstado} onOpenChange={() => setEditingEstado(null)}>
@@ -210,6 +241,63 @@ function EstadosSettings() {
         </DialogContent>
       </Dialog>
     </Card>
+  );
+}
+
+function SortableEstadoItem({
+  estado,
+  onEdit,
+  onDelete,
+}: {
+  estado: Estado;
+  onEdit: () => void;
+  onDelete: (id: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: estado.id.toString(),
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center justify-between rounded-md border bg-card p-3",
+        isDragging && "shadow-lg ring-2 ring-primary"
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1"
+          title="Arrastrar para reordenar"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div className="h-6 w-6 rounded" style={{ backgroundColor: estado.color }} />
+        <span className="font-medium">{estado.nombre}</span>
+        {estado.is_default && (
+          <span className="text-xs text-muted-foreground">(por defecto)</span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button variant="ghost" size="icon" onClick={onEdit}>
+          <Pencil className="h-3 w-3" />
+        </Button>
+        {!estado.is_default && (
+          <Button variant="ghost" size="icon" onClick={() => onDelete(estado.id)}>
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

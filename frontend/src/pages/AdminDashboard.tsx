@@ -1,10 +1,19 @@
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
+import { usePageControls } from "@/contexts/PageControlsContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReportCharts } from "@/components/charts/ReportCharts";
+import { AdminMap2D } from "@/pages/AdminMap2D";
 import { Ship, Box, AlertTriangle, TrendingUp, MoveRight } from "lucide-react";
 
 export default function AdminDashboard() {
+  const { setLeftContent } = usePageControls();
+
+  useEffect(() => {
+    setLeftContent(<h1 className="text-lg font-bold">Panel de Administración</h1>);
+    return () => setLeftContent(null);
+  }, [setLeftContent]);
+
   const [stats, setStats] = useState({
     totalContenedores: 0,
     totalClientes: 0,
@@ -21,13 +30,19 @@ export default function AdminDashboard() {
       api.get("/reportes/estados-distribucion"),
       api.get("/reportes/tipos-iso"),
       api.get("/reportes/peligrosa"),
-    ]).then(([contRes, cliRes, estRes, isoRes, pelRes]) => {
+      api.get("/reportes/actividad"),
+    ]).then(([contRes, cliRes, estRes, isoRes, pelRes, actRes]) => {
       const conts = contRes.data;
+      const hoy = new Date().toDateString();
+      const movsHoy = actRes.data.filter((m: any) => {
+        const fecha = m.fecha ? new Date(m.fecha) : new Date(m.created_at);
+        return fecha.toDateString() === hoy;
+      }).length;
       setStats({
         totalContenedores: conts.length,
         totalClientes: cliRes.data.length,
         peligrosaCount: conts.filter((c: any) => c.mercancia_peligrosa).length,
-        movimientosHoy: 0,
+        movimientosHoy: movsHoy,
       });
       setEstadoDist(estRes.data);
       setTiposIso(isoRes.data);
@@ -38,13 +53,11 @@ export default function AdminDashboard() {
     { icon: Ship, label: "Contenedores", value: stats.totalContenedores, color: "text-blue-400" },
     { icon: Box, label: "Clientes", value: stats.totalClientes, color: "text-green-400" },
     { icon: AlertTriangle, label: "Peligrosos", value: stats.peligrosaCount, color: "text-orange-400" },
-    { icon: TrendingUp, label: "Movimientos hoy", value: "-", color: "text-purple-400" },
+    { icon: TrendingUp, label: "Movimientos hoy", value: stats.movimientosHoy, color: "text-purple-400" },
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Panel de Administración</h1>
-
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.label}>
@@ -71,6 +84,8 @@ export default function AdminDashboard() {
           data={tiposIso.map((t) => ({ name: t.tipo, value: t.cantidad }))}
         />
       </div>
+
+      <AdminMap2D />
     </div>
   );
 }
