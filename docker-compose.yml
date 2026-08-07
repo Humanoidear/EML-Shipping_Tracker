@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: eml_user
+      POSTGRES_PASSWORD: eml_password
+      POSTGRES_DB: eml_shipping
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eml_user -d eml_shipping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

@@ -1,0 +1,220 @@
+from flask import Blueprint, request, jsonify, send_file
+from datetime import datetime
+from ..extensions import db
+from ..models.contenedor import Contenedor
+from ..models.movimiento import Movimiento
+from ..utils.decorators import login_required
+from ..services.qr_service import generate_qr
+
+contenedores_bp = Blueprint("contenedores", __name__)
+
+
+def _parse_fecha(val):
+    if not val:
+        return datetime.utcnow()
+    try:
+        return datetime.fromisoformat(val.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return datetime.utcnow()
+
+
+@contenedores_bp.route("", methods=["GET"])
+@login_required
+def get_contenedores(current_user):
+    contenedores = Contenedor.query.order_by(Contenedor.created_at.desc()).all()
+    return jsonify([c.to_dict() for c in contenedores])
+
+
+@contenedores_bp.route("/<int:contenedor_id>", methods=["GET"])
+@login_required
+def get_contenedor(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    return jsonify(contenedor.to_dict())
+
+
+@contenedores_bp.route("", methods=["POST"])
+@login_required
+def create_contenedor(current_user):
+    data = request.get_json()
+    contenedor = Contenedor(
+        matricula=data["matricula"],
+        cliente_id=data.get("cliente_id"),
+        tipo_iso=data.get("tipo_iso"),
+        origen=data.get("origen"),
+        estado_id=data.get("estado_id"),
+        mercancia_peligrosa=data.get("mercancia_peligrosa", False),
+        peso_kg=data.get("peso_kg"),
+        mercancia=data.get("mercancia"),
+        notas=data.get("notas"),
+        ubicacion_lat=data.get("ubicacion_lat"),
+        ubicacion_lng=data.get("ubicacion_lng"),
+    )
+    db.session.add(contenedor)
+    db.session.flush()
+
+    if data.get("estado_id"):
+        movimiento = Movimiento(
+            contenedor_id=contenedor.id,
+            estado_anterior_id=None,
+            estado_nuevo_id=data["estado_id"],
+            ubicacion_lat=data.get("ubicacion_lat"),
+            ubicacion_lng=data.get("ubicacion_lng"),
+            notas="Contenedor creado",
+            user_id=current_user.id,
+        )
+        db.session.add(movimiento)
+
+    db.session.commit()
+    return jsonify(contenedor.to_dict()), 201
+
+
+@contenedores_bp.route("/<int:contenedor_id>", methods=["PUT"])
+@login_required
+def update_contenedor(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    data = request.get_json()
+    fields = [
+        "matricula", "cliente_id", "tipo_iso", "origen",
+        "mercancia_peligrosa", "peso_kg", "mercancia", "notas",
+        "ubicacion_lat", "ubicacion_lng",
+    ]
+    for field in fields:
+        if field in data:
+            setattr(contenedor, field, data[field])
+    db.session.commit()
+    return jsonify(contenedor.to_dict())
+
+
+@contenedores_bp.route("/<int:contenedor_id>", methods=["DELETE"])
+@login_required
+def delete_contenedor(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    db.session.delete(contenedor)
+    db.session.commit()
+    return jsonify({"message": "Contenedor eliminado"})
+
+
+@contenedores_bp.route("/<int:contenedor_id>/mover", methods=["PUT"])
+@login_required
+def mover_contenedor(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    data = request.get_json()
+
+    nuevo_estado_id = data["nuevo_estado_id"]
+    estado_anterior_id = contenedor.estado_id
+
+    contenedor.estado_id = nuevo_estado_id
+    contenedor.updated_at = db.func.now()
+
+    if data.get("ubicacion_lat") is not None:
+        contenedor.ubicacion_lat = data["ubicacion_lat"]
+    if data.get("ubicacion_lng") is not None:
+        contenedor.ubicacion_lng = data["ubicacion_lng"]
+
+    movimiento = Movimiento(
+        contenedor_id=contenedor.id,
+        estado_anterior_id=estado_anterior_id,
+        estado_nuevo_id=nuevo_estado_id,
+        ubicacion_lat=data.get("ubicacion_lat"),
+        ubicacion_lng=data.get("ubicacion_lng"),
+        notas=data.get("notas", ""),
+        user_id=current_user.id,
+        fecha=_parse_fecha(data.get("fecha")),
+    )
+    db.session.add(movimiento)
+    db.session.commit()
+    return jsonify(contenedor.to_dict())
+
+
+@contenedores_bp.route("/<int:contenedor_id>/movimientos", methods=["GET"])
+@login_required
+def get_movimientos(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    movimientos = Movimiento.query.filter_by(contenedor_id=contenedor_id).order_by(Movimiento.fecha.asc()).all()
+    return jsonify([m.to_dict() for m in movimientos])
+
+
+@contenedores_bp.route("/<int:contenedor_id>/movimientos", methods=["POST"])
+@login_required
+def add_movimiento(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    data = request.get_json()
+    movimiento = Movimiento(
+        contenedor_id=contenedor.id,
+        estado_anterior_id=contenedor.estado_id,
+        estado_nuevo_id=contenedor.estado_id,
+        ubicacion_lat=data.get("ubicacion_lat"),
+        ubicacion_lng=data.get("ubicacion_lng"),
+        notas=data.get("notas", ""),
+        user_id=current_user.id,
+        fecha=_parse_fecha(data.get("fecha")),
+    )
+    db.session.add(movimiento)
+    if data.get("ubicacion_lat") is not None:
+        contenedor.ubicacion_lat = data["ubicacion_lat"]
+    if data.get("ubicacion_lng") is not None:
+        contenedor.ubicacion_lng = data["ubicacion_lng"]
+    contenedor.updated_at = db.func.now()
+    db.session.commit()
+    return jsonify(movimiento.to_dict()), 201
+
+
+@contenedores_bp.route("/<int:contenedor_id>/movimientos/<int:mov_id>", methods=["PUT"])
+@login_required
+def update_movimiento(current_user, contenedor_id, mov_id):
+    movimiento = Movimiento.query.filter_by(id=mov_id, contenedor_id=contenedor_id).first_or_404()
+    data = request.get_json()
+    if "ubicacion_lat" in data:
+        movimiento.ubicacion_lat = data["ubicacion_lat"]
+    if "ubicacion_lng" in data:
+        movimiento.ubicacion_lng = data["ubicacion_lng"]
+    if "notas" in data:
+        movimiento.notas = data["notas"]
+    if "fecha" in data and data["fecha"]:
+        movimiento.fecha = _parse_fecha(data["fecha"])
+    db.session.commit()
+    return jsonify(movimiento.to_dict())
+
+
+@contenedores_bp.route("/<int:contenedor_id>/movimientos/<int:mov_id>", methods=["DELETE"])
+@login_required
+def delete_movimiento(current_user, contenedor_id, mov_id):
+    movimiento = Movimiento.query.filter_by(id=mov_id, contenedor_id=contenedor_id).first_or_404()
+    db.session.delete(movimiento)
+    db.session.commit()
+    return jsonify({"message": "Movimiento eliminado"})
+
+
+@contenedores_bp.route("/<int:contenedor_id>/tiempo-ruta", methods=["GET"])
+@login_required
+def tiempo_en_ruta(current_user, contenedor_id):
+    first = Movimiento.query.filter_by(contenedor_id=contenedor_id).order_by(Movimiento.fecha.asc()).first()
+    last = Movimiento.query.filter_by(contenedor_id=contenedor_id).order_by(Movimiento.fecha.desc()).first()
+    if not first:
+        return jsonify({"dias": 0, "horas": 0})
+    end = last.fecha if last else datetime.utcnow()
+    diff = end - first.fecha
+    return jsonify({
+        "dias": diff.days,
+        "horas": round(diff.total_seconds() / 3600, 1),
+        "inicio": first.fecha.isoformat(),
+        "ultimo": end.isoformat(),
+    })
+
+
+@contenedores_bp.route("/<int:contenedor_id>/qr", methods=["GET"])
+@login_required
+def get_qr(current_user, contenedor_id):
+    contenedor = Contenedor.query.get_or_404(contenedor_id)
+    qr_data = f"eml://contenedor/{contenedor.matricula}"
+    buf = generate_qr(qr_data)
+    return send_file(buf, mimetype="image/png")
+
+
+@contenedores_bp.route("/qr/<matricula>", methods=["GET"])
+@login_required
+def lookup_by_matricula(current_user, matricula):
+    contenedor = Contenedor.query.filter_by(matricula=matricula).first()
+    if not contenedor:
+        return jsonify({"error": "Contenedor no encontrado"}), 404
+    return jsonify(contenedor.to_dict())
