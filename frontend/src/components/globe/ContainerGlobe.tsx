@@ -22,9 +22,10 @@ interface Props {
   focusOn?: ContainerPoint | null;
   width: number;
   height: number;
+  animatedArcs?: boolean;
 }
 
-export function ContainerGlobe({ points, routes = [], focusOn, width, height }: Props) {
+export function ContainerGlobe({ points, routes = [], focusOn, width, height, animatedArcs = false }: Props) {
   const globeEl = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<ContainerPoint | null>(null);
@@ -106,10 +107,13 @@ export function ContainerGlobe({ points, routes = [], focusOn, width, height }: 
         arcStartLng: "startLng",
         arcEndLat: "endLat",
         arcEndLng: "endLng",
-        arcColor: (d: any) => d.color || "#3b82f6",
+        arcColor: (d: any) => (animatedArcs ? "rgba(59, 130, 246, 0.35)" : (d.color || "#3b82f6")),
         arcAltitude: 0.2,
-        arcStroke: 1,
-        arcDashGap: 2,
+        arcStroke: animatedArcs ? 0.6 : 1,
+        arcDashLength: animatedArcs ? 0.3 : 0,
+        arcDashGap: animatedArcs ? 3 : 0,
+        arcDashAnimateTime: animatedArcs ? 2500 : 0,
+        arcOpacity: animatedArcs ? 0.4 : 0.9,
         atmosphereColor: "#bfdbfe",
         backgroundColor: "rgba(0,0,0,0)",
         cloudsImgUrl: "https://unpkg.com/three-globe/example/img/earth-clouds.png",

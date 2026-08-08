@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { OpenStreetMap } from "@/components/map/OpenStreetMap";
+import { LocationInput } from "@/components/map/LocationInput";
 import { QRGenerator } from "@/components/qr/QRGenerator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -69,11 +70,15 @@ interface Contenedor {
   cliente?: { id: number; nombre: string } | null;
   tipo_iso?: string;
   origen?: string;
+  origen_lat?: number;
+  origen_lng?: number;
   estado?: { id: number; nombre: string; color: string } | null;
   mercancia_peligrosa: boolean;
   peso_kg?: number;
   mercancia?: string;
   destino?: string;
+  destino_lat?: number;
+  destino_lng?: number;
   notas?: string;
   alquilado?: boolean;
   fecha_inicio_alquiler?: string;
@@ -144,7 +149,11 @@ export default function ContenedorDetail() {
   const [editClienteId, setEditClienteId] = useState<string>("");
   const [editTipoIso, setEditTipoIso] = useState("");
   const [editOrigen, setEditOrigen] = useState("");
+  const [editOrigenLat, setEditOrigenLat] = useState<number | undefined>();
+  const [editOrigenLng, setEditOrigenLng] = useState<number | undefined>();
   const [editDestino, setEditDestino] = useState("");
+  const [editDestinoLat, setEditDestinoLat] = useState<number | undefined>();
+  const [editDestinoLng, setEditDestinoLng] = useState<number | undefined>();
   const [editPeso, setEditPeso] = useState("");
   const [editMercancia, setEditMercancia] = useState("");
   const [editNotas, setEditNotas] = useState("");
@@ -245,7 +254,11 @@ export default function ContenedorDetail() {
         cliente_id: editClienteId ? parseInt(editClienteId) : null,
         tipo_iso: editTipoIso,
         origen: editOrigen,
+        origen_lat: editOrigenLat ?? null,
+        origen_lng: editOrigenLng ?? null,
         destino: editDestino,
+        destino_lat: editDestinoLat ?? null,
+        destino_lng: editDestinoLng ?? null,
         peso_kg: editPeso ? parseFloat(editPeso) : null,
         mercancia: editMercancia,
         notas: editNotas,
@@ -538,7 +551,7 @@ export default function ContenedorDetail() {
     );
   }
 
-  const mapMarkers = movimientos
+  const mapMarkers: { id: string | number; lat: number; lng: number; label: string }[] = movimientos
     .filter((m) => m.ubicacion_lat && m.ubicacion_lng)
     .map((m) => ({
       id: m.id,
@@ -546,6 +559,15 @@ export default function ContenedorDetail() {
       lng: m.ubicacion_lng!,
       label: `${m.estado_nuevo?.nombre || "Ubicación"} - ${new Date(m.created_at).toLocaleDateString()}`,
     }));
+
+  if (contenedor.origen_lat && contenedor.origen_lng) {
+    mapMarkers.unshift({
+      id: "origen",
+      lat: contenedor.origen_lat,
+      lng: contenedor.origen_lng,
+      label: `Origen: ${contenedor.origen || ""}`,
+    });
+  }
 
   const locationsWithCoords = movimientos.filter((m) => m.ubicacion_lat && m.ubicacion_lng);
 
@@ -576,7 +598,11 @@ export default function ContenedorDetail() {
             setEditClienteId(contenedor.cliente?.id?.toString() || "");
             setEditTipoIso(contenedor.tipo_iso || "");
             setEditOrigen(contenedor.origen || "");
+            setEditOrigenLat(contenedor.origen_lat);
+            setEditOrigenLng(contenedor.origen_lng);
             setEditDestino(contenedor.destino || "");
+            setEditDestinoLat(contenedor.destino_lat);
+            setEditDestinoLng(contenedor.destino_lng);
             setEditPeso(contenedor.peso_kg?.toString() || "");
             setEditMercancia(contenedor.mercancia || "");
             setEditNotas(contenedor.notas || "");
@@ -781,7 +807,7 @@ export default function ContenedorDetail() {
 
         <TabsContent value="mapa">
           <div className="flex gap-4" style={{ height: 500 }}>
-            <div className="flex-1 rounded-lg border overflow-hidden">
+            <div className="flex-1 rounded-lg border overflow-hidden isolate relative z-0">
               <OpenStreetMap
                 lat={contenedor.ubicacion_lat}
                 lng={contenedor.ubicacion_lng}
@@ -922,8 +948,24 @@ export default function ContenedorDetail() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Origen</Label><Input value={editOrigen} onChange={(e) => setEditOrigen(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Destino</Label><Input value={editDestino} onChange={(e) => setEditDestino(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Origen</Label><LocationInput value={editOrigen} onChange={(v, lat, lng) => {
+                  setEditOrigen(v);
+                  if (lat != null && lng != null) {
+                    setEditOrigenLat(lat);
+                    setEditOrigenLng(lng);
+                  }
+                }} placeholder="Buscar origen..." /></div>
+                <div className="space-y-2"><Label>Destino</Label><LocationInput
+                  value={editDestino}
+                  onChange={(v, lat, lng) => {
+                    setEditDestino(v);
+                    if (lat != null && lng != null) {
+                      setEditDestinoLat(lat);
+                      setEditDestinoLng(lng);
+                    }
+                  }}
+                  placeholder="Buscar destino..."
+                /></div>
               </div>
               <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={editPeso} onChange={(e) => setEditPeso(e.target.value)} /></div>
               <div className="space-y-2"><Label>Mercancía</Label><Input value={editMercancia} onChange={(e) => setEditMercancia(e.target.value)} /></div>
@@ -1019,7 +1061,7 @@ function EditLocationDialog({
           <DialogTitle>{movimiento ? "Editar Ubicación" : "Nueva Ubicación"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="h-64 rounded-md overflow-hidden border">
+          <div className="h-64 rounded-md overflow-hidden border isolate relative z-0">
             <OpenStreetMap
               lat={lat}
               lng={lng}

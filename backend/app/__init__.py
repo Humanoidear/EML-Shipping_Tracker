@@ -20,6 +20,7 @@ def create_app(config_class=Config):
     from .routes.reportes import reportes_bp
     from .routes.vistas import vistas_bp
     from .routes.grupos import grupos_bp
+    from .routes.geocode import geocode_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
@@ -29,6 +30,7 @@ def create_app(config_class=Config):
     app.register_blueprint(reportes_bp, url_prefix="/api/reportes")
     app.register_blueprint(vistas_bp, url_prefix="/api/vistas")
     app.register_blueprint(grupos_bp, url_prefix="/api/grupos")
+    app.register_blueprint(geocode_bp, url_prefix="/api/geocode")
 
     from .utils.errors import register_error_handlers
     register_error_handlers(app)

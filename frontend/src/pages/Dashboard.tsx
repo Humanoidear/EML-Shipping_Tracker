@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { KanbanBoard, type KanbanFilters } from "@/components/kanban/KanbanBoard";
 import { QRScanner } from "@/components/qr/QRScanner";
+import { LocationInput } from "@/components/map/LocationInput";
 import api from "@/lib/api";
 import { isValidMatricula } from "@/lib/utils";
 
@@ -306,11 +307,15 @@ function CreateContenedorDialog({
   const [clienteId, setClienteId] = useState<string>("");
   const [tipoIso, setTipoIso] = useState("");
   const [origen, setOrigen] = useState("");
+  const [origenLat, setOrigenLat] = useState<number | undefined>();
+  const [origenLng, setOrigenLng] = useState<number | undefined>();
   const [estadoId, setEstadoId] = useState<string>("");
   const [peligrosa, setPeligrosa] = useState(false);
   const [peso, setPeso] = useState("");
   const [mercancia, setMercancia] = useState("");
   const [destino, setDestino] = useState("");
+  const [destinoLat, setDestinoLat] = useState<number | undefined>();
+  const [destinoLng, setDestinoLng] = useState<number | undefined>();
   const [notas, setNotas] = useState("");
   const [alquilado, setAlquilado] = useState(false);
   const [fechaInicioAlquiler, setFechaInicioAlquiler] = useState("");
@@ -332,7 +337,11 @@ function CreateContenedorDialog({
         cliente_id: clienteId ? parseInt(clienteId) : null,
         tipo_iso: tipoIso,
         origen,
+        origen_lat: origenLat ?? null,
+        origen_lng: origenLng ?? null,
         destino,
+        destino_lat: destinoLat ?? null,
+        destino_lng: destinoLng ?? null,
         estado_id: estadoId ? parseInt(estadoId) : null,
         mercancia_peligrosa: peligrosa,
         peso_kg: peso ? parseFloat(peso) : null,
@@ -393,8 +402,24 @@ function CreateContenedorDialog({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2"><Label>Origen</Label><Input value={origen} onChange={(e) => setOrigen(e.target.value)} /></div>
-          <div className="space-y-2"><Label>Destino</Label><Input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Colón - Mariel" /></div>
+          <div className="space-y-2"><Label>Origen</Label><LocationInput value={origen} onChange={(v, lat, lng) => {
+            setOrigen(v);
+            if (lat != null && lng != null) {
+              setOrigenLat(lat);
+              setOrigenLng(lng);
+            }
+          }} placeholder="Buscar origen..." /></div>
+          <div className="space-y-2"><Label>Destino</Label><LocationInput
+            value={destino}
+            onChange={(v, lat, lng) => {
+              setDestino(v);
+              if (lat != null && lng != null) {
+                setDestinoLat(lat);
+                setDestinoLng(lng);
+              }
+            }}
+            placeholder="Colón - Mariel"
+          /></div>
         </div>
         <div className="space-y-2">
           <Label>Estado inicial *</Label>

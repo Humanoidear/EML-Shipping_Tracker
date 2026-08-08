@@ -11,11 +11,15 @@ class Contenedor(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True)
     tipo_iso = db.Column(db.String(10))
     origen = db.Column(db.String(200))
+    origen_lat = db.Column(db.Numeric(10, 7))
+    origen_lng = db.Column(db.Numeric(10, 7))
     estado_id = db.Column(db.Integer, db.ForeignKey("estados.id"), nullable=True)
     mercancia_peligrosa = db.Column(db.Boolean, default=False)
     peso_kg = db.Column(db.Numeric(10, 2))
     mercancia = db.Column(db.String(300))
     destino = db.Column(db.String(300))
+    destino_lat = db.Column(db.Numeric(10, 7))
+    destino_lng = db.Column(db.Numeric(10, 7))
     notas = db.Column(db.Text)
     alquilado = db.Column(db.Boolean, default=False)
     fecha_inicio_alquiler = db.Column(db.DateTime, nullable=True)
@@ -38,12 +42,16 @@ class Contenedor(db.Model):
             "cliente": self.cliente.to_dict() if self.cliente else None,
             "tipo_iso": self.tipo_iso,
             "origen": self.origen,
+            "origen_lat": float(self.origen_lat) if self.origen_lat else None,
+            "origen_lng": float(self.origen_lng) if self.origen_lng else None,
             "estado_id": self.estado_id,
             "estado": self.estado.to_dict() if self.estado else None,
             "mercancia_peligrosa": self.mercancia_peligrosa,
             "peso_kg": float(self.peso_kg) if self.peso_kg else None,
             "mercancia": self.mercancia,
             "destino": self.destino,
+            "destino_lat": float(self.destino_lat) if self.destino_lat else None,
+            "destino_lng": float(self.destino_lng) if self.destino_lng else None,
             "alquilado": self.alquilado,
             "fecha_inicio_alquiler": self.fecha_inicio_alquiler.isoformat() if self.fecha_inicio_alquiler else None,
             "fecha_devolucion_alquiler": self.fecha_devolucion_alquiler.isoformat() if self.fecha_devolucion_alquiler else None,

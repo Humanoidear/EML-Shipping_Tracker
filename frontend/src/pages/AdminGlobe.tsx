@@ -10,6 +10,9 @@ interface Contenedor {
   matricula: string;
   ubicacion_lat?: number;
   ubicacion_lng?: number;
+  destino?: string;
+  destino_lat?: number;
+  destino_lng?: number;
   estado?: { nombre: string } | null;
 }
 
@@ -31,6 +34,7 @@ export default function AdminGlobe() {
   const [contenedores, setContenedores] = useState<Contenedor[]>([]);
   const [selectedId, setSelectedId] = useState<string>("all");
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [allMovimientos, setAllMovimientos] = useState<Record<number, Movimiento[]>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -51,6 +55,28 @@ export default function AdminGlobe() {
       .then((res) => setMovimientos(res.data))
       .catch((err) => console.error("Error fetching movimientos:", err));
   }, [selectedId]);
+
+  useEffect(() => {
+    if (selectedId !== "all") return;
+    let cancelled = false;
+    Promise.all(
+      contenedores.map((c) =>
+        api.get(`/contenedores/${c.id}/movimientos`).then((res) => res.data)
+      )
+    )
+      .then((all) => {
+        if (cancelled) return;
+        const map: Record<number, Movimiento[]> = {};
+        contenedores.forEach((c, i) => {
+          map[c.id] = all[i] || [];
+        });
+        setAllMovimientos(map);
+      })
+      .catch((err) => console.error("Error fetching all movimientos:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, contenedores]);
 
   const measure = useCallback(() => {
     const container = containerRef.current;
@@ -100,7 +126,55 @@ export default function AdminGlobe() {
     return [];
   }, [contenedores, selectedId]);
 
+  const destinationPoints = useMemo(() => {
+    if (selectedId === "all") {
+      return contenedores
+        .filter((c) => c.destino_lat && c.destino_lng)
+        .map((c) => ({
+          lat: c.destino_lat!,
+          lng: c.destino_lng!,
+          label: `Destino ${c.destino || ""}`.trim() || c.matricula,
+          color: "#22c55e",
+        }));
+    }
+    const cont = contenedores.find((c) => c.id.toString() === selectedId);
+    if (cont?.destino_lat && cont?.destino_lng) {
+      return [{
+        lat: cont.destino_lat,
+        lng: cont.destino_lng,
+        label: `Destino ${cont.destino || ""}`.trim(),
+        color: "#22c55e",
+      }];
+    }
+    return [];
+  }, [contenedores, selectedId]);
+
   const routes = useMemo(() => {
+    if (selectedId === "all") {
+      const allRoutes: { startLat: number; startLng: number; endLat: number; endLng: number }[] = [];
+      contenedores.forEach((c) => {
+        const movs = allMovimientos[c.id] || [];
+        const locations = movs
+          .filter((m) => m.ubicacion_lat && m.ubicacion_lng)
+          .map((m) => ({
+            lat: m.ubicacion_lat!,
+            lng: m.ubicacion_lng!,
+          }));
+        if (c.ubicacion_lat && c.ubicacion_lng) {
+          locations.push({ lat: c.ubicacion_lat, lng: c.ubicacion_lng });
+        }
+        for (let i = 0; i < locations.length - 1; i++) {
+          allRoutes.push({
+            startLat: locations[i].lat,
+            startLng: locations[i].lng,
+            endLat: locations[i + 1].lat,
+            endLng: locations[i + 1].lng,
+          });
+        }
+      });
+      return allRoutes;
+    }
+
     const locations = movimientos
       .filter((m) => m.ubicacion_lat && m.ubicacion_lng)
       .map((m) => ({
@@ -118,7 +192,7 @@ export default function AdminGlobe() {
       });
     }
     return routePaths;
-  }, [movimientos]);
+  }, [movimientos, allMovimientos, contenedores, selectedId]);
 
   const focusOn = useMemo(() => {
     if (selectedId === "all") return null;
@@ -130,11 +204,12 @@ export default function AdminGlobe() {
       <div ref={containerRef} className="h-full w-full">
         {size.width > 0 && size.height > 0 ? (
           <ContainerGlobe
-            points={points}
+            points={[...points, ...destinationPoints]}
             routes={routes}
             focusOn={focusOn}
             width={size.width}
             height={size.height}
+            animatedArcs={selectedId === "all"}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-slate-50">
@@ -160,9 +235,10 @@ export default function AdminGlobe() {
         </Select>
       </div>
 
-      {selectedId !== "all" && routes.length > 0 && (
-        <div className="absolute bottom-4 left-4 z-10 rounded-lg border bg-card/90 backdrop-blur px-3 py-1.5 text-xs text-muted-foreground shadow-lg">
-          {movimientos.filter((m) => m.ubicacion_lat).length} puntos con ubicación
+      {selectedId !== "all" && destinationPoints.length > 0 && (
+        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-lg border bg-card/90 backdrop-blur px-3 py-1.5 text-xs text-muted-foreground shadow-lg">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+          Destino
         </div>
       )}
     </div>

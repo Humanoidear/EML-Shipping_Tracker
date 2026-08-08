@@ -46,7 +46,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: "EML Shipping Tracker",
-    icon: path.join(__dirname, "..", "frontend", "public", "img", "logo.svg"),
+    icon: path.join(__dirname, "..", "frontend", "public", "img", "logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -69,6 +69,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin") {
+    app.dock.setIcon(path.join(__dirname, "..", "frontend", "public", "img", "logo.png"));
+  }
+
   startFlask();
 
   setTimeout(createWindow, 2000);

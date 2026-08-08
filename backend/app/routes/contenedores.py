@@ -4,6 +4,7 @@ from ..extensions import db
 from ..models.contenedor import Contenedor
 from ..models.movimiento import Movimiento
 from ..models.adjunto import Adjunto
+from ..models.estado import Estado
 from ..utils.decorators import login_required
 from ..services.qr_service import generate_qr
 
@@ -50,22 +51,29 @@ def create_contenedor(current_user):
         return jsonify({"error": "Ya existe un contenedor con esa matrícula"}), 400
     if not data.get("estado_id"):
         return jsonify({"error": "Debes seleccionar un estado inicial"}), 400
+    origen_lat = data.get("origen_lat")
+    origen_lng = data.get("origen_lng")
+
     contenedor = Contenedor(
         matricula=data["matricula"],
         cliente_id=data.get("cliente_id"),
         tipo_iso=data.get("tipo_iso"),
         origen=data.get("origen"),
+        origen_lat=origen_lat,
+        origen_lng=origen_lng,
         estado_id=data.get("estado_id"),
         mercancia_peligrosa=data.get("mercancia_peligrosa", False),
         peso_kg=data.get("peso_kg"),
         mercancia=data.get("mercancia"),
         destino=data.get("destino"),
+        destino_lat=data.get("destino_lat"),
+        destino_lng=data.get("destino_lng"),
         notas=data.get("notas"),
         alquilado=data.get("alquilado", False),
         fecha_inicio_alquiler=_parse_fecha_or_none(data.get("fecha_inicio_alquiler")),
         fecha_devolucion_alquiler=_parse_fecha_or_none(data.get("fecha_devolucion_alquiler")),
-        ubicacion_lat=data.get("ubicacion_lat"),
-        ubicacion_lng=data.get("ubicacion_lng"),
+        ubicacion_lat=data.get("ubicacion_lat") or origen_lat,
+        ubicacion_lng=data.get("ubicacion_lng") or origen_lng,
     )
     db.session.add(contenedor)
     db.session.flush()
@@ -76,8 +84,8 @@ def create_contenedor(current_user):
                 contenedor_id=contenedor.id,
                 estado_anterior_id=None,
                 estado_nuevo_id=data["estado_id"],
-                ubicacion_lat=data.get("ubicacion_lat"),
-                ubicacion_lng=data.get("ubicacion_lng"),
+                ubicacion_lat=data.get("ubicacion_lat") or origen_lat,
+                ubicacion_lng=data.get("ubicacion_lng") or origen_lng,
                 notas="Contenedor creado",
                 user_id=current_user.id,
             )
@@ -96,7 +104,8 @@ def update_contenedor(current_user, contenedor_id):
     contenedor = Contenedor.query.get_or_404(contenedor_id)
     data = request.get_json()
     fields = [
-        "matricula", "cliente_id", "tipo_iso", "origen", "destino",
+        "matricula", "cliente_id", "tipo_iso", "origen", "origen_lat", "origen_lng",
+        "destino", "destino_lat", "destino_lng",
         "mercancia_peligrosa", "peso_kg", "mercancia", "notas",
         "alquilado", "ubicacion_lat", "ubicacion_lng",
     ]
@@ -145,21 +154,31 @@ def mover_contenedor(current_user, contenedor_id):
 
     nuevo_estado_id = data["nuevo_estado_id"]
     estado_anterior_id = contenedor.estado_id
+    nuevo_estado = Estado.query.get(nuevo_estado_id)
+
+    lat = data.get("ubicacion_lat")
+    lng = data.get("ubicacion_lng")
+
+    # Al mover a "Entregado" con destino definido, usar las coordenadas del destino.
+    if lat is None and lng is None and nuevo_estado and nuevo_estado.nombre.strip().lower() == "entregado":
+        if contenedor.destino_lat is not None and contenedor.destino_lng is not None:
+            lat = float(contenedor.destino_lat)
+            lng = float(contenedor.destino_lng)
 
     contenedor.estado_id = nuevo_estado_id
     contenedor.updated_at = db.func.now()
 
-    if data.get("ubicacion_lat") is not None:
-        contenedor.ubicacion_lat = data["ubicacion_lat"]
-    if data.get("ubicacion_lng") is not None:
-        contenedor.ubicacion_lng = data["ubicacion_lng"]
+    if lat is not None:
+        contenedor.ubicacion_lat = lat
+    if lng is not None:
+        contenedor.ubicacion_lng = lng
 
     movimiento = Movimiento(
         contenedor_id=contenedor.id,
         estado_anterior_id=estado_anterior_id,
         estado_nuevo_id=nuevo_estado_id,
-        ubicacion_lat=data.get("ubicacion_lat"),
-        ubicacion_lng=data.get("ubicacion_lng"),
+        ubicacion_lat=lat,
+        ubicacion_lng=lng,
         notas=data.get("notas", ""),
         user_id=current_user.id,
         fecha=_parse_fecha(data.get("fecha")),

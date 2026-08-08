@@ -94,7 +94,7 @@ export function MovimientoDialog({ contenedor, targetEstado, onConfirm, onCancel
               </Button>
             </div>
             {showMap && (
-              <div className="h-64 rounded-md overflow-hidden border">
+              <div className="h-64 rounded-md overflow-hidden border isolate relative z-0">
                 <OpenStreetMap
                   lat={lat}
                   lng={lng}
