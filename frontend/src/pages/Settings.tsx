@@ -41,6 +41,9 @@ interface Cliente {
 export default function Settings() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canManageUsers = isAdmin || !!user?.permisos?.can_manage_users;
+  const canManageEstados = isAdmin || !!user?.permisos?.can_manage_estados;
+  const canManageClientes = isAdmin || !!user?.permisos?.can_manage_clientes;
 
   const { setLeftContent } = usePageControls();
   useEffect(() => {
@@ -53,30 +56,32 @@ export default function Settings() {
       <Tabs defaultValue="profile">
         <TabsList>
           <TabsTrigger value="profile">Perfil</TabsTrigger>
-          {isAdmin && <TabsTrigger value="users">Usuarios</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="estados">Estados</TabsTrigger>}
-          <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          {canManageUsers && <TabsTrigger value="users">Usuarios</TabsTrigger>}
+          {canManageEstados && <TabsTrigger value="estados">Estados</TabsTrigger>}
+          {canManageClientes && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="profile">
           <ProfileSettings />
         </TabsContent>
 
-        {isAdmin && (
+        {canManageUsers && (
           <TabsContent value="users">
             <UserManagement />
           </TabsContent>
         )}
 
-        {isAdmin && (
+        {canManageEstados && (
           <TabsContent value="estados">
             <EstadosSettings />
           </TabsContent>
         )}
 
-        <TabsContent value="clientes">
-          <ClientesSettings />
-        </TabsContent>
+        {canManageClientes && (
+          <TabsContent value="clientes">
+            <ClientesSettings />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

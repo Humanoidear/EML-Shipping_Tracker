@@ -3,10 +3,16 @@ from flask_jwt_extended import create_access_token, get_jwt_identity
 from ..extensions import db, bcrypt
 from ..models.user import User
 from ..models.permiso import Permiso
-from ..utils.decorators import login_required, admin_required
+from ..utils.decorators import login_required
 import os
 
 auth_bp = Blueprint("auth", __name__)
+
+
+def _can_manage_users(user) -> bool:
+    if user.role == "admin":
+        return True
+    return bool(user.permisos and user.permisos.can_manage_users)
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -24,8 +30,10 @@ def login():
 
 
 @auth_bp.route("/register", methods=["POST"])
-@admin_required
+@login_required
 def register(current_user):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     data = request.get_json()
     if User.query.filter_by(username=data["username"]).first():
         return jsonify({"error": "El nombre de usuario ya existe"}), 400

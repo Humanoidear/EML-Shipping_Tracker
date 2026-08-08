@@ -2,6 +2,8 @@ const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 
+app.setName("EML Shipping Tracker");
+
 let mainWindow = null;
 let flaskProcess = null;
 

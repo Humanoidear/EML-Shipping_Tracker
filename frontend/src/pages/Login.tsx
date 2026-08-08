@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Ship, Eye, EyeOff } from "lucide-react";
-import logoSvg from "/img/logo.svg";
 import { ErrorMessage } from "@/components/ui/spinner";
+import logoSvg from "/img/logo.svg";
+import wallpaperUrl from "/img/wallpaper.jpg";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -33,7 +34,10 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div
+      className="flex min-h-screen items-center justify-center bg-cover bg-center p-4"
+      style={{ backgroundImage: `url(${wallpaperUrl})` }}
+    >
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1 text-center">
           <img src={logoSvg} alt="EML" className="mx-auto mb-2 h-16 w-16 invert-on-dark" />

@@ -6,6 +6,8 @@ interface User {
   username: string;
   email: string;
   role: "admin" | "operator";
+  theme?: string;
+  sidebar_collapsed?: boolean;
   permisos: {
     can_manage_users: boolean;
     can_manage_clientes: boolean;
@@ -23,6 +25,8 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  updatePreference: (prefs: Partial<{ theme: string; sidebar_collapsed: boolean }>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -31,6 +35,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
+
+  const refreshUser = async () => {
+    if (!token) return;
+    try {
+      const res = await api.get("/auth/me");
+      setUser(res.data);
+    } catch {
+      localStorage.removeItem("token");
+      setToken(null);
+    }
+  };
+
+  const updatePreference = async (prefs: Partial<{ theme: string; sidebar_collapsed: boolean }>) => {
+    if (!user) return;
+    const res = await api.put(`/users/${user.id}`, prefs);
+    setUser(res.data);
+  };
 
   useEffect(() => {
     if (token) {
@@ -45,6 +66,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setLoading(false);
     }
+  }, [token]);
+
+  // Refresh permissions periodically so changes by an admin take effect without re-login.
+  useEffect(() => {
+    if (!token) return;
+    const interval = window.setInterval(() => {
+      refreshUser();
+    }, 30000);
+    return () => window.clearInterval(interval);
   }, [token]);
 
   const login = async (username: string, password: string) => {
@@ -63,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser, updatePreference }}>
       {children}
     </AuthContext.Provider>
   );

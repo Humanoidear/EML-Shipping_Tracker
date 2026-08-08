@@ -45,10 +45,12 @@ class GlobeErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 function ProtectedRoute({
   children,
   adminOnly = false,
+  perm,
   noPadding = false,
 }: {
   children: ReactNode;
   adminOnly?: boolean;
+  perm?: string;
   noPadding?: boolean;
 }) {
   const { user, loading } = useAuth();
@@ -62,6 +64,7 @@ function ProtectedRoute({
   }
   if (!user) return <Navigate to="/login" replace />;
   if (adminOnly && user.role !== "admin") return <Navigate to="/" replace />;
+  if (perm && user.role !== "admin" && !(user.permisos as any)?.[perm]) return <Navigate to="/" replace />;
 
   return (
     <div className="flex h-screen">
@@ -107,7 +110,7 @@ function AppRoutes() {
       <Route
         path="/admin/reports"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute perm="can_view_reports">
             <AdminReports />
           </ProtectedRoute>
         }
@@ -115,7 +118,7 @@ function AppRoutes() {
       <Route
         path="/admin/globe"
         element={
-          <ProtectedRoute adminOnly noPadding>
+          <ProtectedRoute perm="can_view_globe" noPadding>
             <AdminGlobe />
           </ProtectedRoute>
         }

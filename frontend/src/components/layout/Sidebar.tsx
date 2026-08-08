@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -12,25 +12,52 @@ import logoSvg from "/img/logo.svg";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Contenedores" },
   { to: "/admin", icon: Shield, label: "Admin", adminOnly: true },
-  { to: "/admin/reports", icon: BarChart3, label: "Reportes", adminOnly: true },
-  { to: "/admin/globe", icon: Globe, label: "Globo 3D", adminOnly: true },
+  { to: "/admin/reports", icon: BarChart3, label: "Reportes", perm: "can_view_reports" },
+  { to: "/admin/globe", icon: Globe, label: "Globo 3D", perm: "can_view_globe" },
   { to: "/settings", icon: Settings, label: "Configuración" },
 ];
 
 export function Sidebar() {
-  const { user } = useAuth();
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
-  const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
+  const { user, updatePreference } = useAuth();
+  const [collapsed, setCollapsed] = useState(() => {
+    if (user?.sidebar_collapsed != null) return user.sidebar_collapsed;
+    return localStorage.getItem("sidebar-collapsed") === "true";
+  });
+  const [dark, setDark] = useState(() => {
+    if (user?.theme) return user.theme === "dark";
+    return localStorage.getItem("theme") === "dark";
+  });
+  const syncingTheme = useRef(false);
+
+  useEffect(() => {
+    if (user?.theme) {
+      syncingTheme.current = true;
+      setDark(user.theme === "dark");
+    }
+  }, [user?.theme]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("theme", dark ? "dark" : "light");
+    if (user && !syncingTheme.current) {
+      updatePreference({ theme: dark ? "dark" : "light" }).catch(() => {});
+    }
+    syncingTheme.current = false;
   }, [dark]);
 
   const toggleCollapsed = () => {
     const next = !collapsed;
     setCollapsed(next);
     localStorage.setItem("sidebar-collapsed", String(next));
+    if (user) {
+      updatePreference({ sidebar_collapsed: next }).catch(() => {});
+    }
+  };
+
+  const canShow = (item: (typeof navItems)[number]) => {
+    if (item.adminOnly && user?.role !== "admin") return false;
+    if (item.perm && user?.role !== "admin" && !(user?.permisos as any)?.[item.perm]) return false;
+    return true;
   };
 
   return (
@@ -41,7 +68,7 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 space-y-1 p-2">
         {navItems.map((item) => {
-          if (item.adminOnly && user?.role !== "admin") return null;
+          if (!canShow(item)) return null;
           return (
             <NavLink
               key={item.to}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePageControls } from "@/contexts/PageControlsContext";
+import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -125,7 +126,9 @@ interface Grupo {
 export default function ContenedorDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { setLeftContent } = usePageControls();
+  const canExport = user?.role === "admin" || !!user?.permisos?.can_export_data;
   const [contenedor, setContenedor] = useState<Contenedor | null>(null);
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [tiempoRuta, setTiempoRuta] = useState<TiempoRuta | null>(null);
@@ -619,14 +622,18 @@ export default function ContenedorDetail() {
             <Trash2 className="mr-1 h-4 w-4 text-destructive" />
             Eliminar
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel}>
-            <FileSpreadsheet className="mr-1 h-4 w-4" />
-            Exportar Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
-            <FileText className="mr-1 h-4 w-4" />
-            Exportar PDF
-          </Button>
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={handleExportExcel}>
+              <FileSpreadsheet className="mr-1 h-4 w-4" />
+              Exportar Excel
+            </Button>
+          )}
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <FileText className="mr-1 h-4 w-4" />
+              Exportar PDF
+            </Button>
+          )}
         </div>
       </div>
 

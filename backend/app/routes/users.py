@@ -2,28 +2,40 @@ from flask import Blueprint, request, jsonify
 from ..extensions import db, bcrypt
 from ..models.user import User
 from ..models.permiso import Permiso
-from ..utils.decorators import login_required, admin_required
+from ..utils.decorators import login_required
 
 users_bp = Blueprint("users", __name__)
 
 
+def _can_manage_users(user) -> bool:
+    if user.role == "admin":
+        return True
+    return bool(user.permisos and user.permisos.can_manage_users)
+
+
 @users_bp.route("", methods=["GET"])
-@admin_required
+@login_required
 def get_users(current_user):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     users = User.query.order_by(User.created_at.desc()).all()
     return jsonify([u.to_dict() for u in users])
 
 
 @users_bp.route("/<int:user_id>", methods=["GET"])
-@admin_required
+@login_required
 def get_user(current_user, user_id):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     user = User.query.get_or_404(user_id)
     return jsonify(user.to_dict())
 
 
 @users_bp.route("/<int:user_id>", methods=["PUT"])
-@admin_required
+@login_required
 def update_user(current_user, user_id):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     user = User.query.get_or_404(user_id)
     data = request.get_json()
 
@@ -39,16 +51,33 @@ def update_user(current_user, user_id):
         user.email = data["email"]
     if "password" in data:
         user.password_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
-    if "role" in data:
+    if "theme" in data and data["theme"] in ("light", "dark"):
+        user.theme = data["theme"]
+    if "sidebar_collapsed" in data:
+        user.sidebar_collapsed = bool(data["sidebar_collapsed"])
+    if "role" in data and data["role"] != user.role:
         user.role = data["role"]
+        if not user.permisos:
+            user.permisos = Permiso(user_id=user.id)
+            db.session.add(user.permisos)
+        is_admin = data["role"] == "admin"
+        user.permisos.can_manage_users = is_admin
+        user.permisos.can_manage_clientes = True
+        user.permisos.can_manage_estados = is_admin
+        user.permisos.can_view_reports = is_admin
+        user.permisos.can_view_globe = is_admin
+        user.permisos.can_export_data = is_admin
+        user.permisos.can_scan_qr = True
 
     db.session.commit()
     return jsonify(user.to_dict())
 
 
 @users_bp.route("/<int:user_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def delete_user(current_user, user_id):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     if current_user.id == user_id:
         return jsonify({"error": "No puedes eliminar tu propio usuario"}), 400
     user = User.query.get_or_404(user_id)
@@ -58,8 +87,10 @@ def delete_user(current_user, user_id):
 
 
 @users_bp.route("/<int:user_id>/permisos", methods=["PUT"])
-@admin_required
+@login_required
 def update_permisos(current_user, user_id):
+    if not _can_manage_users(current_user):
+        return jsonify({"error": "Acceso denegado"}), 403
     user = User.query.get_or_404(user_id)
     data = request.get_json()
 
