@@ -9,8 +9,10 @@ import ContenedorDetail from "@/pages/ContenedorDetail";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminReports from "@/pages/AdminReports";
 import AdminGlobe from "@/pages/AdminGlobe";
+import LiveView from "@/pages/LiveView";
 import Settings from "@/pages/Settings";
 import { Spinner } from "@/components/ui/spinner";
+import { ConnectionGate } from "@/components/ConnectionGate";
 import { Component, type ReactNode } from "react";
 
 class GlobeErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -124,6 +126,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/live"
+        element={
+          <ProtectedRoute noPadding>
+            <LiveView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/settings"
         element={
           <ProtectedRoute>
@@ -142,11 +152,13 @@ export default function App() {
 
   return (
     <Router>
-      <AuthProvider>
-        <PageControlsProvider>
-          <AppRoutes />
-        </PageControlsProvider>
-      </AuthProvider>
+      <ConnectionGate>
+        <AuthProvider>
+          <PageControlsProvider>
+            <AppRoutes />
+          </PageControlsProvider>
+        </AuthProvider>
+      </ConnectionGate>
     </Router>
   );
 }

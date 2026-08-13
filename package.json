@@ -4,19 +4,42 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "NODE_ENV=development electron .",
-    "build": "electron-builder"
+    "build": "bash scripts/build-release.sh",
+    "build:frontend": "cd frontend && npm run build",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.eml.shipping-tracker",
     "productName": "EML Shipping Tracker",
+    "icon": "build/icon.png",
     "files": [
       "electron/**/*",
-      "frontend/dist/**/*",
-      "backend/**/*"
-    ]
+      "frontend/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.business",
+      "target": ["dmg"]
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": ["nsis"]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": ["AppImage"]
+    }
   },
   "allowScripts": {
     "electron@31.7.7": true

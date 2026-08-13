@@ -14,3 +14,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-change-me-to-a-random-string}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-to-another-random-string}
+      DATABASE_URL: postgresql://eml_user:eml_password@postgres:5432/eml_shipping
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@eml.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    ports:
+      - "5050:5050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped

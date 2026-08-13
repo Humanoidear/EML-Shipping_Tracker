@@ -1,45 +1,9 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
-const { spawn } = require("child_process");
 
 app.setName("EML Shipping Tracker");
 
 let mainWindow = null;
-let flaskProcess = null;
-
-function startFlask() {
-  const pythonPath = path.join(__dirname, "..", "backend", ".venv", "bin", "python");
-  const flaskPath = path.join(__dirname, "..", "backend", "run_prod.py");
-
-  flaskProcess = spawn(pythonPath, [flaskPath], {
-    env: { ...process.env },
-    stdio: "pipe",
-  });
-
-  flaskProcess.stdout.on("data", (data) => {
-    console.log(`Flask: ${data}`);
-  });
-
-  flaskProcess.stderr.on("data", (data) => {
-    console.log(`Flask: ${data}`);
-  });
-
-  flaskProcess.on("error", (err) => {
-    console.error("Failed to start Flask:", err);
-  });
-
-  flaskProcess.on("close", (code) => {
-    console.log(`Flask exited with code ${code}`);
-    flaskProcess = null;
-  });
-}
-
-function stopFlask() {
-  if (flaskProcess) {
-    flaskProcess.kill();
-    flaskProcess = null;
-  }
-}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -48,7 +12,6 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: "EML Shipping Tracker",
-    icon: path.join(__dirname, "..", "frontend", "public", "img", "logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -65,30 +28,33 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
   }
 
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+    console.error(`Failed to load page: ${code} ${desc}`);
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
 app.whenReady().then(() => {
-  if (process.platform === "darwin") {
-    app.dock.setIcon(path.join(__dirname, "..", "frontend", "public", "img", "logo.png"));
+  try {
+    createWindow();
+  } catch (err) {
+    console.error("Failed to create window:", err);
   }
 
-  startFlask();
-
-  setTimeout(createWindow, 2000);
-
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      try { createWindow(); } catch (err) { console.error(err); }
+    }
   });
 });
 
 app.on("window-all-closed", () => {
-  stopFlask();
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  stopFlask();
+ipcMain.on("app-reload", () => {
+  if (mainWindow) mainWindow.webContents.reload();
 });

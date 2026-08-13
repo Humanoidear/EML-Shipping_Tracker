@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  LayoutDashboard, BarChart3, Globe, Settings,
+  LayoutDashboard, BarChart3, Globe, Settings, MonitorPlay,
   Shield, PanelLeftClose, PanelLeftOpen, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import logoSvg from "/img/logo.svg";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Contenedores" },
+  { to: "/live", icon: MonitorPlay, label: "Vista en vivo" },
   { to: "/admin", icon: Shield, label: "Admin", adminOnly: true },
   { to: "/admin/reports", icon: BarChart3, label: "Reportes", perm: "can_view_reports" },
   { to: "/admin/globe", icon: Globe, label: "Globo 3D", perm: "can_view_globe" },

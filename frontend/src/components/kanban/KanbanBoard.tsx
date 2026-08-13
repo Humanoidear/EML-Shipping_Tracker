@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors,
   type DragStartEvent, type DragEndEvent, type DragOverEvent,
@@ -80,7 +80,10 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const fetchAll = async () => {
+  const isDraggingRef = useRef(false);
+  useEffect(() => { isDraggingRef.current = activeDragId !== null; }, [activeDragId]);
+
+  const fetchAll = useCallback(async () => {
     try {
       const [estRes, contRes, grpRes] = await Promise.all([
         api.get("/estados"), api.get("/contenedores"), api.get("/grupos"),
@@ -90,9 +93,18 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
       setGrupos(grpRes.data);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, []);
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Live updates: poll every 5s so multiple users see each other's changes.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (isDraggingRef.current) return; // don't disturb an active drag
+      fetchAll();
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [fetchAll]);
 
   const groupedContIds = useMemo(() => {
     const ids = new Set<number>();

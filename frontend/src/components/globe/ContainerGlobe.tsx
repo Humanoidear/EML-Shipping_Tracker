@@ -23,9 +23,10 @@ interface Props {
   width: number;
   height: number;
   animatedArcs?: boolean;
+  highlightRoutes?: RoutePath[];
 }
 
-export function ContainerGlobe({ points, routes = [], focusOn, width, height, animatedArcs = false }: Props) {
+export function ContainerGlobe({ points, routes = [], focusOn, width, height, animatedArcs = false, highlightRoutes = [] }: Props) {
   const globeEl = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<ContainerPoint | null>(null);
@@ -41,11 +42,29 @@ export function ContainerGlobe({ points, routes = [], focusOn, width, height, an
       globeEl.current.controls().autoRotateSpeed = 0.4;
     }
     if (focusOn) {
-      globeEl.current.pointOfView({ lat: focusOn.lat, lng: focusOn.lng, altitude: 1.5 }, 1000);
+      // If we have a highlighted route, zoom out to fit its full extent.
+      if (highlightRoutes.length > 0) {
+        const lats = highlightRoutes.flatMap((r) => [r.startLat, r.endLat]);
+        const lngs = highlightRoutes.flatMap((r) => [r.startLng, r.endLng]);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        const latSpan = maxLat - minLat;
+        const lngSpan = maxLng - minLng;
+        const span = Math.max(latSpan, lngSpan * Math.cos((centerLat * Math.PI) / 180));
+        // Rough heuristic: bigger span -> higher altitude. Local routes ~1.8, intercontinental ~3.
+        const altitude = Math.min(3.2, 1.8 + span / 60);
+        globeEl.current.pointOfView({ lat: centerLat, lng: centerLng, altitude }, 1000);
+      } else {
+        globeEl.current.pointOfView({ lat: focusOn.lat, lng: focusOn.lng, altitude: 1.5 }, 1000);
+      }
     } else {
       globeEl.current.pointOfView({ lat: 30, lng: 0, altitude: 2.5 }, 1000);
     }
-  }, [focusOn, ready]);
+  }, [focusOn, highlightRoutes, ready]);
 
   const htmlElements = useMemo(() => {
     if (!hoveredPoint) return [];
@@ -102,18 +121,18 @@ export function ContainerGlobe({ points, routes = [], focusOn, width, height, an
           `;
           return el;
         },
-        arcsData: routes,
+        arcsData: [...routes, ...highlightRoutes.map((r) => ({ ...r, highlighted: true }))],
         arcStartLat: "startLat",
         arcStartLng: "startLng",
         arcEndLat: "endLat",
         arcEndLng: "endLng",
-        arcColor: (d: any) => (animatedArcs ? "rgba(59, 130, 246, 0.35)" : (d.color || "#3b82f6")),
+        arcColor: (d: any) => (d.highlighted ? "#2563eb" : (animatedArcs ? "rgba(59, 130, 246, 0.35)" : (d.color || "#3b82f6"))),
         arcAltitude: 0.2,
-        arcStroke: animatedArcs ? 0.6 : 1,
-        arcDashLength: animatedArcs ? 0.3 : 0,
-        arcDashGap: animatedArcs ? 3 : 0,
-        arcDashAnimateTime: animatedArcs ? 2500 : 0,
-        arcOpacity: animatedArcs ? 0.4 : 0.9,
+        arcStroke: (d: any) => (d.highlighted ? 1.2 : (animatedArcs ? 0.6 : 1)),
+        arcDashLength: (d: any) => (d.highlighted ? 0 : (animatedArcs ? 0.3 : 0)),
+        arcDashGap: (d: any) => (d.highlighted ? 0 : (animatedArcs ? 3 : 0)),
+        arcDashAnimateTime: (d: any) => (d.highlighted ? 0 : (animatedArcs ? 2500 : 0)),
+        arcOpacity: (d: any) => (d.highlighted ? 1 : (animatedArcs ? 0.4 : 0.9)),
         atmosphereColor: "#bfdbfe",
         backgroundColor: "rgba(0,0,0,0)",
         cloudsImgUrl: "https://unpkg.com/three-globe/example/img/earth-clouds.png",

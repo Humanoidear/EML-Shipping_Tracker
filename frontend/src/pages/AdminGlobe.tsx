@@ -14,12 +14,16 @@ interface Contenedor {
   destino_lat?: number;
   destino_lng?: number;
   estado?: { nombre: string } | null;
+  created_at?: string;
 }
 
 interface Movimiento {
   ubicacion_lat?: number;
   ubicacion_lng?: number;
+  estado_anterior?: { nombre: string } | null;
   estado_nuevo?: { nombre: string } | null;
+  notas?: string;
+  fecha?: string;
   created_at: string;
 }
 
@@ -199,46 +203,116 @@ export default function AdminGlobe() {
     return points.length > 0 ? points[0] : null;
   }, [points, selectedId]);
 
+  const selectedContainer = useMemo(
+    () => contenedores.find((c) => c.id.toString() === selectedId),
+    [contenedores, selectedId]
+  );
+
+  const timelineEvents = useMemo(() => {
+    if (selectedId === "all") return [];
+    const evts: { fecha: string; titulo: string; detalle: string }[] = [];
+    if (selectedContainer?.created_at) {
+      evts.push({
+        fecha: selectedContainer.created_at,
+        titulo: "Contenedor creado",
+        detalle: selectedContainer.matricula,
+      });
+    }
+    movimientos.forEach((m) => {
+      const fecha = m.fecha || m.created_at;
+      evts.push({
+        fecha,
+        titulo: m.estado_anterior?.nombre
+          ? `${m.estado_anterior.nombre} → ${m.estado_nuevo?.nombre || ""}`
+          : m.estado_nuevo?.nombre || "Movimiento",
+        detalle: m.notas || (m.ubicacion_lat != null ? `${m.ubicacion_lat.toFixed(4)}, ${m.ubicacion_lng?.toFixed(4)}` : ""),
+      });
+    });
+    return evts.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [selectedId, movimientos, selectedContainer]);
+
   return (
-    <div className="relative h-full w-full overflow-hidden">
-      <div ref={containerRef} className="h-full w-full">
-        {size.width > 0 && size.height > 0 ? (
-          <ContainerGlobe
-            points={[...points, ...destinationPoints]}
-            routes={routes}
-            focusOn={focusOn}
-            width={size.width}
-            height={size.height}
-            animatedArcs={selectedId === "all"}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-slate-50">
-            <span className="text-sm text-muted-foreground">Cargando globo...</span>
+    <div className="relative flex h-full w-full overflow-hidden">
+      <div className="relative flex-1">
+        <div ref={containerRef} className="h-full w-full">
+          {size.width > 0 && size.height > 0 ? (
+            <ContainerGlobe
+              points={[...points, ...destinationPoints]}
+              routes={routes}
+              focusOn={focusOn}
+              width={size.width}
+              height={size.height}
+              animatedArcs={selectedId === "all"}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-slate-50">
+              <span className="text-sm text-muted-foreground">Cargando globo...</span>
+            </div>
+          )}
+        </div>
+
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-3 rounded-lg border bg-card/90 backdrop-blur px-4 py-2 shadow-lg">
+          <Label className="text-sm whitespace-nowrap">Ver:</Label>
+          <Select value={selectedId} onValueChange={setSelectedId}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los contenedores</SelectItem>
+              {contenedores.map((c) => (
+                <SelectItem key={c.id} value={c.id.toString()}>
+                  {c.matricula}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedId !== "all" && destinationPoints.length > 0 && (
+          <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-lg border bg-card/90 backdrop-blur px-3 py-1.5 text-xs text-muted-foreground shadow-lg">
+            <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+            Destino
           </div>
         )}
       </div>
 
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-3 rounded-lg border bg-card/90 backdrop-blur px-4 py-2 shadow-lg">
-        <Label className="text-sm whitespace-nowrap">Ver:</Label>
-        <Select value={selectedId} onValueChange={setSelectedId}>
-          <SelectTrigger className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los contenedores</SelectItem>
-            {contenedores.map((c) => (
-              <SelectItem key={c.id} value={c.id.toString()}>
-                {c.matricula}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {selectedId !== "all" && destinationPoints.length > 0 && (
-        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-lg border bg-card/90 backdrop-blur px-3 py-1.5 text-xs text-muted-foreground shadow-lg">
-          <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-          Destino
+      {selectedId !== "all" && (
+        <div className="w-80 shrink-0 border-l border-border bg-card/80 backdrop-blur overflow-y-auto">
+          <div className="p-4">
+            <h3 className="mb-1 text-sm font-bold">{selectedContainer?.matricula || "Contenedor"}</h3>
+            <p className="mb-4 text-xs text-muted-foreground">
+              {selectedContainer?.estado?.nombre || "Sin estado"}
+            </p>
+            {timelineEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin eventos</p>
+            ) : (
+              <div className="relative space-y-0">
+                {timelineEvents.map((e, i) => (
+                  <div key={i} className="flex gap-3 pb-5">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="h-3 w-3 rounded-full border-2 shrink-0"
+                        style={{
+                          borderColor: i === 0 ? "#22c55e" : i === timelineEvents.length - 1 ? "#8b5cf6" : "#3b82f6",
+                          backgroundColor: i === 0 ? "#22c55e" : i === timelineEvents.length - 1 ? "#8b5cf6" : "transparent",
+                        }}
+                      />
+                      {i < timelineEvents.length - 1 && <div className="w-px flex-1 bg-border" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(e.fecha).toLocaleString("es-ES")}
+                      </p>
+                      <p className="text-sm font-medium leading-tight">{e.titulo}</p>
+                      {e.detalle && (
+                        <p className="text-xs text-muted-foreground truncate">{e.detalle}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

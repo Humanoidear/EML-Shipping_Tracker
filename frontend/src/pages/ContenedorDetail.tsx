@@ -642,6 +642,7 @@ export default function ContenedorDetail() {
           <TabsTrigger value="info">Información</TabsTrigger>
           <TabsTrigger value="mapa">Mapa</TabsTrigger>
           <TabsTrigger value="movimientos">Historial</TabsTrigger>
+          <TabsTrigger value="calendario">Calendario</TabsTrigger>
           <TabsTrigger value="qr">Código QR</TabsTrigger>
           <TabsTrigger value="fotos">Fotos</TabsTrigger>
           <TabsTrigger value="documentos">Documentos</TabsTrigger>
@@ -921,6 +922,13 @@ export default function ContenedorDetail() {
               <QRGenerator matricula={contenedor.matricula} size={220} />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="calendario">
+          <CalendarPane
+            contenedor={contenedor}
+            movimientos={movimientos}
+          />
         </TabsContent>
 
         <TabsContent value="fotos">
@@ -1217,4 +1225,204 @@ interface Adjunto {
   filename: string;
   data: string;
   created_at: string;
+}
+
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const WEEKDAYS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+
+interface CalendarEvent {
+  date: string;
+  type: "creado" | "movimiento" | "finalizado";
+  label: string;
+  color: string;
+}
+
+function CalendarPane({
+  contenedor,
+  movimientos,
+}: {
+  contenedor: Contenedor;
+  movimientos: Movimiento[];
+}) {
+  const [viewDate, setViewDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d;
+  });
+  const [hoveredDay, setHoveredDay] = useState<string | null>(null);
+  const eventsScrollRef = useRef<HTMLDivElement>(null);
+  const eventRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!hoveredDay) return;
+    const el = eventRefs.current.get(hoveredDay);
+    const scrollEl = eventsScrollRef.current;
+    if (el && scrollEl) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [hoveredDay]);
+
+  const events = useMemo(() => {
+    const evts: CalendarEvent[] = [];
+    if (contenedor.created_at) {
+      evts.push({
+        date: new Date(contenedor.created_at).toISOString().slice(0, 10),
+        type: "creado",
+        label: "Contenedor creado",
+        color: "#22c55e",
+      });
+    }
+    movimientos.forEach((m) => {
+      const fecha = m.fecha || m.created_at;
+      if (!fecha) return;
+      evts.push({
+        date: new Date(fecha).toISOString().slice(0, 10),
+        type: "movimiento",
+        label: `${m.estado_anterior?.nombre ? m.estado_anterior.nombre + " → " : ""}${m.estado_nuevo?.nombre || "Movimiento"}${m.notas ? ` (${m.notas})` : ""}`,
+        color: "#3b82f6",
+      });
+    });
+    const last = movimientos[movimientos.length - 1];
+    if (last) {
+      const fecha = last.fecha || last.created_at;
+      if (fecha) {
+        evts.push({
+          date: new Date(fecha).toISOString().slice(0, 10),
+          type: "finalizado",
+          label: `Último estado: ${last.estado_nuevo?.nombre || ""}`,
+          color: "#8b5cf6",
+        });
+      }
+    }
+    return evts;
+  }, [contenedor, movimientos]);
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    events.forEach((e) => {
+      const list = map.get(e.date) || [];
+      list.push(e);
+      map.set(e.date, list);
+    });
+    return map;
+  }, [events]);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7; // Monday-start
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  const cells: (number | null)[] = [
+    ...Array(startOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const changeMonth = (delta: number) => {
+    setViewDate(new Date(year, month + delta, 1));
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="mb-4 flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => changeMonth(-1)}>
+              ‹
+            </Button>
+            <h3 className="font-semibold">
+              {MONTHS[month]} {year}
+            </h3>
+            <Button variant="ghost" size="sm" onClick={() => changeMonth(1)}>
+              ›
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground mb-1">
+            {WEEKDAYS.map((d) => (
+              <div key={d} className="py-1">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((day, i) => {
+              if (day === null) return <div key={i} />;
+              const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const dayEvents = eventsByDay.get(key) || [];
+              const isToday = key === todayKey;
+              return (
+                <div
+                  key={i}
+                  onMouseEnter={() => setHoveredDay(key)}
+                  onMouseLeave={() => setHoveredDay(null)}
+                  className={cn(
+                    "relative flex h-12 flex-col items-center justify-center rounded-md text-sm hover:bg-accent cursor-default",
+                    isToday && "ring-1 ring-primary",
+                    dayEvents.length > 0 && "font-medium",
+                    hoveredDay === key && "bg-accent ring-1 ring-primary"
+                  )}
+                >
+                  {day}
+                  {dayEvents.length > 0 && (
+                    <div className="flex gap-0.5 mt-1">
+                      {dayEvents.map((e, j) => (
+                        <span key={j} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: e.color }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> Creación</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-500" /> Movimiento</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" /> Último estado</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Eventos del contenedor</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin eventos registrados</p>
+          ) : (
+            <div ref={eventsScrollRef} className="space-y-2 max-h-[400px] overflow-y-auto">
+              {[...events]
+                .sort((a, b) => a.date.localeCompare(b.date))
+                .map((e, i) => {
+                  const isHighlighted = hoveredDay != null && e.date === hoveredDay;
+                  return (
+                    <div
+                      key={i}
+                      ref={(el) => {
+                        if (el) eventRefs.current.set(e.date, el);
+                        else eventRefs.current.delete(e.date);
+                      }}
+                      className={cn(
+                        "flex items-start gap-2 rounded-md border p-2 text-xs transition-colors",
+                        isHighlighted && "border-primary bg-primary/10 ring-1 ring-primary"
+                      )}
+                    >
+                      <span className="mt-0.5 h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
+                      <div className="min-w-0">
+                        <p className="text-muted-foreground">
+                          {new Date(e.date).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                        <p className="font-medium truncate">{e.label}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
