@@ -13,7 +13,7 @@ import LiveView from "@/pages/LiveView";
 import Settings from "@/pages/Settings";
 import { Spinner } from "@/components/ui/spinner";
 import { ConnectionGate } from "@/components/ConnectionGate";
-import { Component, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 
 class GlobeErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -56,6 +56,7 @@ function ProtectedRoute({
   noPadding?: boolean;
 }) {
   const { user, loading } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (loading) {
     return (
@@ -70,10 +71,10 @@ function ProtectedRoute({
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Navbar />
-        <main className={noPadding ? "flex-1 overflow-hidden" : "flex-1 overflow-auto p-6"}>
+      <Sidebar mobileOpen={mobileOpen} onOpenChange={setMobileOpen} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Navbar onMenuClick={() => setMobileOpen(true)} />
+        <main className={noPadding ? "flex-1 overflow-hidden" : "flex-1 overflow-auto p-4 md:p-6"}>
           {noPadding ? <GlobeErrorBoundary>{children}</GlobeErrorBoundary> : children}
         </main>
       </div>
