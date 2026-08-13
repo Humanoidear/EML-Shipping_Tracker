@@ -162,8 +162,6 @@ export default function ContenedorDetail() {
   const [editNotas, setEditNotas] = useState("");
   const [editPeligrosa, setEditPeligrosa] = useState(false);
   const [editAlquilado, setEditAlquilado] = useState(false);
-  const [editFechaInicio, setEditFechaInicio] = useState("");
-  const [editFechaDevolucion, setEditFechaDevolucion] = useState("");
   const pageRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(() => {
@@ -267,8 +265,6 @@ export default function ContenedorDetail() {
         notas: editNotas,
         alquilado: editAlquilado,
         mercancia_peligrosa: editPeligrosa,
-        fecha_inicio_alquiler: editAlquilado && editFechaInicio ? new Date(editFechaInicio).toISOString() : null,
-        fecha_devolucion_alquiler: editAlquilado && editFechaDevolucion ? new Date(editFechaDevolucion).toISOString() : null,
       });
       setShowEditDialog(false);
       fetchData();
@@ -611,8 +607,6 @@ export default function ContenedorDetail() {
             setEditNotas(contenedor.notas || "");
             setEditPeligrosa(contenedor.mercancia_peligrosa || false);
             setEditAlquilado(contenedor.alquilado || false);
-            setEditFechaInicio(contenedor.fecha_inicio_alquiler ? new Date(contenedor.fecha_inicio_alquiler).toISOString().slice(0, 10) : "");
-            setEditFechaDevolucion(contenedor.fecha_devolucion_alquiler ? new Date(contenedor.fecha_devolucion_alquiler).toISOString().slice(0, 10) : "");
             setShowEditDialog(true);
           }}>
             <Pencil className="mr-1 h-4 w-4" />
@@ -994,10 +988,7 @@ export default function ContenedorDetail() {
                 <Switch checked={editAlquilado} onCheckedChange={setEditAlquilado} />
               </div>
               {editAlquilado && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Inicio alquiler</Label><Input type="date" value={editFechaInicio} onChange={(e) => setEditFechaInicio(e.target.value)} /></div>
-                  <div className="space-y-2"><Label>Devolución alquiler</Label><Input type="date" value={editFechaDevolucion} onChange={(e) => setEditFechaDevolucion(e.target.value)} /></div>
-                </div>
+                <p className="text-xs text-muted-foreground">Contenedor marcado como alquilado.</p>
               )}
               <DialogFooter>
                 <Button type="submit">Guardar Cambios</Button>

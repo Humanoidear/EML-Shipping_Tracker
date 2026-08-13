@@ -318,8 +318,6 @@ function CreateContenedorDialog({
   const [destinoLng, setDestinoLng] = useState<number | undefined>();
   const [notas, setNotas] = useState("");
   const [alquilado, setAlquilado] = useState(false);
-  const [fechaInicioAlquiler, setFechaInicioAlquiler] = useState("");
-  const [fechaDevolucionAlquiler, setFechaDevolucionAlquiler] = useState("");
   const [loading, setLoading] = useState(false);
 
   const matriculaValid = isValidMatricula(matricula);
@@ -348,8 +346,6 @@ function CreateContenedorDialog({
         mercancia,
         notas,
         alquilado,
-        fecha_inicio_alquiler: alquilado && fechaInicioAlquiler ? new Date(fechaInicioAlquiler).toISOString() : null,
-        fecha_devolucion_alquiler: alquilado && fechaDevolucionAlquiler ? new Date(fechaDevolucionAlquiler).toISOString() : null,
       });
       onCreated();
     } catch (err: any) {
@@ -445,16 +441,7 @@ function CreateContenedorDialog({
           <Switch id="alquilado" checked={alquilado} onCheckedChange={setAlquilado} />
         </div>
         {alquilado && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Inicio alquiler</Label>
-              <Input type="date" value={fechaInicioAlquiler} onChange={(e) => setFechaInicioAlquiler(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Devolución alquiler</Label>
-              <Input type="date" value={fechaDevolucionAlquiler} onChange={(e) => setFechaDevolucionAlquiler(e.target.value)} />
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">Contenedor marcado como alquilado.</p>
         )}
         <DialogFooter>
           <Button type="submit" disabled={loading}>{loading ? "Creando..." : "Crear Contenedor"}</Button>
