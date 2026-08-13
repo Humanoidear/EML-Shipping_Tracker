@@ -448,11 +448,11 @@ function CreateContenedorDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Inicio alquiler</Label>
-              <Input type="datetime-local" value={fechaInicioAlquiler} onChange={(e) => setFechaInicioAlquiler(e.target.value)} />
+              <Input type="date" value={fechaInicioAlquiler} onChange={(e) => setFechaInicioAlquiler(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Devolución alquiler</Label>
-              <Input type="datetime-local" value={fechaDevolucionAlquiler} onChange={(e) => setFechaDevolucionAlquiler(e.target.value)} />
+              <Input type="date" value={fechaDevolucionAlquiler} onChange={(e) => setFechaDevolucionAlquiler(e.target.value)} />
             </div>
           </div>
         )}

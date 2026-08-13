@@ -320,7 +320,7 @@ export default function ContenedorDetail() {
         m.ubicacion_lng ?? "-",
         m.notas || "-",
         m.username || "Sistema",
-        m.fecha ? new Date(m.fecha).toLocaleString() : new Date(m.created_at).toLocaleString(),
+        m.fecha ? new Date(m.fecha).toLocaleDateString("es-ES") : new Date(m.created_at).toLocaleDateString("es-ES"),
       ]),
     ];
 
@@ -456,7 +456,7 @@ export default function ContenedorDetail() {
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
       movimientos.forEach((m, i) => {
-        const fecha = m.fecha ? new Date(m.fecha).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }) : "-";
+        const fecha = m.fecha ? new Date(m.fecha).toLocaleDateString("es-ES") : "-";
         const prev = m.estado_anterior?.nombre || "-";
         const next = m.estado_nuevo?.nombre || "-";
         const notas = m.notas || "-";
@@ -611,8 +611,8 @@ export default function ContenedorDetail() {
             setEditNotas(contenedor.notas || "");
             setEditPeligrosa(contenedor.mercancia_peligrosa || false);
             setEditAlquilado(contenedor.alquilado || false);
-            setEditFechaInicio(contenedor.fecha_inicio_alquiler ? new Date(contenedor.fecha_inicio_alquiler).toISOString().slice(0, 16) : "");
-            setEditFechaDevolucion(contenedor.fecha_devolucion_alquiler ? new Date(contenedor.fecha_devolucion_alquiler).toISOString().slice(0, 16) : "");
+            setEditFechaInicio(contenedor.fecha_inicio_alquiler ? new Date(contenedor.fecha_inicio_alquiler).toISOString().slice(0, 10) : "");
+            setEditFechaDevolucion(contenedor.fecha_devolucion_alquiler ? new Date(contenedor.fecha_devolucion_alquiler).toISOString().slice(0, 10) : "");
             setShowEditDialog(true);
           }}>
             <Pencil className="mr-1 h-4 w-4" />
@@ -905,7 +905,7 @@ export default function ContenedorDetail() {
                           </p>
                         )}
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {new Date(mov.created_at).toLocaleString()} — {mov.username || "Sistema"}
+                          {new Date(mov.created_at).toLocaleDateString("es-ES")} — {mov.username || "Sistema"}
                         </p>
                       </div>
                     </div>
@@ -995,8 +995,8 @@ export default function ContenedorDetail() {
               </div>
               {editAlquilado && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Inicio alquiler</Label><Input type="datetime-local" value={editFechaInicio} onChange={(e) => setEditFechaInicio(e.target.value)} /></div>
-                  <div className="space-y-2"><Label>Devolución alquiler</Label><Input type="datetime-local" value={editFechaDevolucion} onChange={(e) => setEditFechaDevolucion(e.target.value)} /></div>
+                  <div className="space-y-2"><Label>Inicio alquiler</Label><Input type="date" value={editFechaInicio} onChange={(e) => setEditFechaInicio(e.target.value)} /></div>
+                  <div className="space-y-2"><Label>Devolución alquiler</Label><Input type="date" value={editFechaDevolucion} onChange={(e) => setEditFechaDevolucion(e.target.value)} /></div>
                 </div>
               )}
               <DialogFooter>
@@ -1039,9 +1039,9 @@ function EditLocationDialog({
   const [notas, setNotas] = useState(movimiento?.notas || "");
   const [fecha, setFecha] = useState(
     movimiento?.fecha
-      ? new Date(movimiento.fecha).toISOString().slice(0, 16)
+      ? new Date(movimiento.fecha).toISOString().slice(0, 10)
       : movimiento?.created_at
-        ? new Date(movimiento.created_at).toISOString().slice(0, 16)
+        ? new Date(movimiento.created_at).toISOString().slice(0, 10)
         : ""
   );
   const [loading, setLoading] = useState(false);
@@ -1097,7 +1097,7 @@ function EditLocationDialog({
           </div>
           <div className="space-y-2">
             <Label>Fecha</Label>
-            <Input type="datetime-local" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>

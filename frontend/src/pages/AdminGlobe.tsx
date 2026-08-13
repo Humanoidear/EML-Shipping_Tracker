@@ -301,7 +301,7 @@ export default function AdminGlobe() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground">
-                        {new Date(e.fecha).toLocaleString("es-ES")}
+                        {new Date(e.fecha).toLocaleDateString("es-ES")}
                       </p>
                       <p className="text-sm font-medium leading-tight">{e.titulo}</p>
                       {e.detalle && (
