@@ -2,10 +2,13 @@ import axios from "axios";
 
 const isElectron = !!(window as any).electronAPI?.isElectron || window.location.protocol === "file:";
 
+// Default server: the production VPS. Overridable via the connection screen.
+const DEFAULT_SERVER = "http://62.238.98.166";
+
 function getBaseURL(): string {
   const saved = localStorage.getItem("apiUrl");
   if (saved) return saved.replace(/\/+$/, "") + "/api";
-  return isElectron ? "http://localhost:5050/api" : "/api";
+  return isElectron ? `${DEFAULT_SERVER}/api` : "/api";
 }
 
 export function getApiUrl(): string {
@@ -14,6 +17,10 @@ export function getApiUrl(): string {
 
 export function setApiUrl(url: string) {
   localStorage.setItem("apiUrl", url.trim());
+}
+
+export function getDefaultServer(): string {
+  return DEFAULT_SERVER;
 }
 
 // Connection-error listeners (used by ConnectionGate to show the error screen).

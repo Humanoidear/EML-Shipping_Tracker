@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { WifiOff, RefreshCw, Save } from "lucide-react";
-import { getApiUrl, setApiUrl, onConnectionError, clearConnectionError } from "@/lib/api";
+import { getApiUrl, setApiUrl, getDefaultServer, onConnectionError, clearConnectionError } from "@/lib/api";
 
 export function ConnectionGate({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -11,8 +11,7 @@ export function ConnectionGate({ children }: { children: ReactNode }) {
   const [serverUrl, setServerUrl] = useState(() => {
     const saved = localStorage.getItem("apiUrl");
     if (saved) return saved;
-    const isElectron = !!(window as any).electronAPI?.isElectron || window.location.protocol === "file:";
-    return isElectron ? "http://localhost:5050" : window.location.origin;
+    return getDefaultServer();
   });
 
   const check = async () => {
