@@ -3,13 +3,15 @@
 # One-time VPS setup: install Nginx, configure reverse proxy for EML backend,
 # open firewall ports 80/443, keep SSH (22) open.
 #
-# Usage on the VPS:
-#   cd /opt/eml-shipping-tracker
-#   sudo bash deploy/setup-vps.sh
+# Usage on the VPS (from anywhere):
+#   sudo bash /path/to/EML-Shipping_Tracker/deploy/setup-vps.sh
 #
 set -e
 
-CONF_SRC="/opt/eml-shipping-tracker/deploy/nginx-eml.conf"
+# Resolve the config from this script's own location (works regardless of
+# where the project was placed, e.g. /opt/EML-Shipping_Tracker).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONF_SRC="$SCRIPT_DIR/nginx-eml.conf"
 NGINX_AVAILABLE="/etc/nginx/sites-available/eml"
 NGINX_ENABLED="/etc/nginx/sites-enabled/eml"
 
@@ -27,7 +29,7 @@ nginx -v
 
 echo "=== [2/5] Installing config ==="
 if [ ! -f "$CONF_SRC" ]; then
-  echo "ERROR: $CONF_SRC not found. Run this script from the project root (or fix CONF_SRC)." >&2
+  echo "ERROR: $CONF_SRC not found." >&2
   exit 1
 fi
 cp "$CONF_SRC" "$NGINX_AVAILABLE"
