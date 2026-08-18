@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageControls } from "@/contexts/PageControlsContext";
@@ -19,13 +19,14 @@ import {
 } from "@/components/ui/popover";
 import {
   Plus, ScanLine, Search, X, CheckCircle, AlertTriangle,
-  Filter, Layers,
+  Filter, Layers, FileSpreadsheet,
 } from "lucide-react";
 import { KanbanBoard, type KanbanFilters } from "@/components/kanban/KanbanBoard";
 import { QRScanner } from "@/components/qr/QRScanner";
 import { LocationInput } from "@/components/map/LocationInput";
 import api from "@/lib/api";
 import { isValidMatricula } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 interface Estado {
   id: number;
@@ -39,14 +40,13 @@ interface Cliente {
   nombre: string;
 }
 
-const TIPO_ISO_OPTIONS = ["20GP", "40GP", "40HC", "45HC", "20OT", "40OT", "20RE", "40RE"];
-
 function FilterPopover({
-  filters, setFilters, clientesList,
+  filters, setFilters, clientesList, contenedoresList,
 }: {
   filters: KanbanFilters;
   setFilters: React.Dispatch<React.SetStateAction<KanbanFilters>>;
   clientesList: Cliente[];
+  contenedoresList: { matricula: string; tipo_iso?: string }[];
 }) {
   const activeCount =
     (filters.matricula ? 1 : 0) +
@@ -54,6 +54,19 @@ function FilterPopover({
     (filters.tipoIso !== "todos" ? 1 : 0) +
     (filters.soloPeligrosa ? 1 : 0) +
     (filters.grupoNombre ? 1 : 0);
+
+  const isoCodes = useMemo(() => {
+    const codes = new Set<string>();
+    contenedoresList.forEach((c) => {
+      if (c.tipo_iso) codes.add(c.tipo_iso);
+    });
+    return Array.from(codes).sort();
+  }, [contenedoresList]);
+
+  const matriculas = useMemo(() => {
+    const list = contenedoresList.map((c) => c.matricula);
+    return Array.from(new Set(list)).sort();
+  }, [contenedoresList]);
 
   const clearFilters = () => {
     setFilters({ matricula: "", clienteId: "todos", tipoIso: "todos", soloPeligrosa: false, grupoNombre: "" });
@@ -86,10 +99,16 @@ function FilterPopover({
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-8 h-8 text-sm"
+                  list="eml-matriculas"
                   value={filters.matricula}
                   onChange={(e) => setFilters((f) => ({ ...f, matricula: e.target.value }))}
                   placeholder="Buscar..."
                 />
+                <datalist id="eml-matriculas">
+                  {matriculas.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -119,7 +138,7 @@ function FilterPopover({
                 <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
-                  {TIPO_ISO_OPTIONS.map((t) => (
+                  {isoCodes.map((t) => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
                 </SelectContent>
@@ -149,6 +168,7 @@ export default function Dashboard() {
   const [estados, setEstados] = useState<Estado[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesList, setClientesList] = useState<Cliente[]>([]);
+  const [contenedoresList, setContenedoresList] = useState<{ matricula: string; tipo_iso?: string }[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showGroupDialog, setShowGroupDialog] = useState(false);
@@ -165,6 +185,12 @@ export default function Dashboard() {
     api.get("/clientes").then((res) => setClientesList(res.data)).catch(console.error);
   }, []);
 
+  useEffect(() => {
+    api.get("/contenedores").then((res) => {
+      setContenedoresList(res.data.map((c: any) => ({ matricula: c.matricula, tipo_iso: c.tipo_iso })));
+    }).catch(console.error);
+  }, [refreshKey]);
+
   const openCreateDialog = async () => {
     try {
       const [estRes, cliRes] = await Promise.all([api.get("/estados"), api.get("/clientes")]);
@@ -179,6 +205,38 @@ export default function Dashboard() {
     api.get(`/contenedores/qr/${matricula}`).then((res) => {
       if (res.data?.id) navigate(`/contenedores/${res.data.id}`);
     }).catch(() => alert("Contenedor no encontrado"));
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const res = await api.get("/contenedores");
+      const rows = res.data.map((c: any) => ({
+        "Matrícula": c.matricula || "-",
+        "Código (Tipo ISO)": c.tipo_iso || "-",
+        "Cliente": c.cliente?.nombre || "-",
+        "Estado": c.estado?.nombre || "-",
+        "Tara (kg)": c.peso_kg ?? "",
+        "Payload (kg)": c.payload_kg ?? "",
+        "Mercancía": c.mercancia || "-",
+        "Peligrosa": c.mercancia_peligrosa ? "Sí" : "No",
+        "Origen": c.origen || "-",
+        "Destino": c.destino || "-",
+        "Alquilado": c.alquilado ? "Sí" : "No",
+        "Notas": c.notas || "",
+        "Creado": c.created_at ? new Date(c.created_at).toLocaleDateString("es-ES") : "-",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 14 }, { wch: 12 }, { wch: 20 }, { wch: 14 },
+        { wch: 10 }, { wch: 12 }, { wch: 24 }, { wch: 10 },
+        { wch: 24 }, { wch: 24 }, { wch: 10 }, { wch: 40 }, { wch: 12 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Contenedores");
+      XLSX.writeFile(wb, `EML_Shipping_Tracker_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      alert("Error al exportar contenedores");
+    }
   };
 
   const handleCreateGroup = async () => {
@@ -206,7 +264,7 @@ export default function Dashboard() {
   const leftControls = (
     <div className="flex items-center gap-2">
       <h1 className="text-lg font-bold">Contenedores</h1>
-      <FilterPopover filters={filters} setFilters={setFilters} clientesList={clientesList} />
+      <FilterPopover filters={filters} setFilters={setFilters} clientesList={clientesList} contenedoresList={contenedoresList} />
       <Button
         variant={selectionMode ? "default" : "outline"}
         size="sm"
@@ -225,6 +283,10 @@ export default function Dashboard() {
 
   const rightControls = (
     <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={handleExportExcel} title="Exportar todos los contenedores a Excel">
+        <FileSpreadsheet className="mr-1 h-3 w-3" />
+        Exportar Excel
+      </Button>
       {user?.permisos?.can_scan_qr && (
         <Button variant="outline" size="sm" onClick={() => setShowScanner(true)}>
           <ScanLine className="mr-1 h-3 w-3" />
@@ -312,6 +374,7 @@ function CreateContenedorDialog({
   const [estadoId, setEstadoId] = useState<string>("");
   const [peligrosa, setPeligrosa] = useState(false);
   const [peso, setPeso] = useState("");
+  const [payload, setPayload] = useState("");
   const [mercancia, setMercancia] = useState("");
   const [destino, setDestino] = useState("");
   const [destinoLat, setDestinoLat] = useState<number | undefined>();
@@ -343,6 +406,7 @@ function CreateContenedorDialog({
         estado_id: estadoId ? parseInt(estadoId) : null,
         mercancia_peligrosa: peligrosa,
         peso_kg: peso ? parseFloat(peso) : null,
+        payload_kg: payload ? parseFloat(payload) : null,
         mercancia,
         notas,
         alquilado,
@@ -429,7 +493,10 @@ function CreateContenedorDialog({
           </Select>
           {!estadoId && <p className="text-xs text-orange-500">El estado es obligatorio</p>}
         </div>
-        <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={peso} onChange={(e) => setPeso(e.target.value)} /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={peso} onChange={(e) => setPeso(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Payload (KG)</Label><Input type="number" value={payload} onChange={(e) => setPayload(e.target.value)} /></div>
+        </div>
         <div className="space-y-2"><Label>Mercancía</Label><Input value={mercancia} onChange={(e) => setMercancia(e.target.value)} /></div>
         <div className="space-y-2"><Label>Notas</Label><Input value={notas} onChange={(e) => setNotas(e.target.value)} /></div>
         <div className="flex items-center justify-between rounded-md border p-3">

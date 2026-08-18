@@ -76,6 +76,7 @@ interface Contenedor {
   estado?: { id: number; nombre: string; color: string } | null;
   mercancia_peligrosa: boolean;
   peso_kg?: number;
+  payload_kg?: number;
   mercancia?: string;
   destino?: string;
   destino_lat?: number;
@@ -158,6 +159,7 @@ export default function ContenedorDetail() {
   const [editDestinoLat, setEditDestinoLat] = useState<number | undefined>();
   const [editDestinoLng, setEditDestinoLng] = useState<number | undefined>();
   const [editPeso, setEditPeso] = useState("");
+  const [editPayload, setEditPayload] = useState("");
   const [editMercancia, setEditMercancia] = useState("");
   const [editNotas, setEditNotas] = useState("");
   const [editPeligrosa, setEditPeligrosa] = useState(false);
@@ -261,6 +263,7 @@ export default function ContenedorDetail() {
         destino_lat: editDestinoLat ?? null,
         destino_lng: editDestinoLng ?? null,
         peso_kg: editPeso ? parseFloat(editPeso) : null,
+        payload_kg: editPayload ? parseFloat(editPayload) : null,
         mercancia: editMercancia,
         notas: editNotas,
         alquilado: editAlquilado,
@@ -295,7 +298,8 @@ export default function ContenedorDetail() {
       ["Origen", contenedor.origen || "-"],
       ["Estado", contenedor.estado?.nombre || "-"],
       ["Mercancía peligrosa", contenedor.mercancia_peligrosa ? "Sí" : "No"],
-      ["Peso (kg)", contenedor.peso_kg ?? "-"],
+      ["Peso (tara, kg)", contenedor.peso_kg ?? "-"],
+      ["Payload (kg)", contenedor.payload_kg ?? "-"],
       ["Mercancía", contenedor.mercancia || "-"],
       ["Notas", contenedor.notas || "-"],
       ["Creado", new Date(contenedor.created_at).toLocaleString()],
@@ -396,6 +400,7 @@ export default function ContenedorDetail() {
     labelValue("Origen:", contenedor.origen || "-");
     labelValue("Destino:", contenedor.destino || "-");
     labelValue("Tara (kg):", contenedor.peso_kg != null ? String(contenedor.peso_kg) : "-");
+    labelValue("Payload (kg):", contenedor.payload_kg != null ? String(contenedor.payload_kg) : "-");
     labelValue("Mercancía:", contenedor.mercancia || "-");
     labelValue("Mercancía peligrosa:", contenedor.mercancia_peligrosa ? "Sí" : "No");
     labelValue("Alquilado:", contenedor.alquilado ? "Sí" : "No");
@@ -603,6 +608,7 @@ export default function ContenedorDetail() {
             setEditDestinoLat(contenedor.destino_lat);
             setEditDestinoLng(contenedor.destino_lng);
             setEditPeso(contenedor.peso_kg?.toString() || "");
+            setEditPayload(contenedor.payload_kg?.toString() || "");
             setEditMercancia(contenedor.mercancia || "");
             setEditNotas(contenedor.notas || "");
             setEditPeligrosa(contenedor.mercancia_peligrosa || false);
@@ -670,6 +676,11 @@ export default function ContenedorDetail() {
                   <Scale className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Tara:</span>
                   <span>{contenedor.peso_kg != null ? `${contenedor.peso_kg} kg` : "-"}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Scale className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Payload:</span>
+                  <span>{contenedor.payload_kg != null ? `${contenedor.payload_kg} kg` : "-"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -976,7 +987,10 @@ export default function ContenedorDetail() {
                   placeholder="Buscar destino..."
                 /></div>
               </div>
-              <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={editPeso} onChange={(e) => setEditPeso(e.target.value)} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Tara (KG)</Label><Input type="number" value={editPeso} onChange={(e) => setEditPeso(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Payload (KG)</Label><Input type="number" value={editPayload} onChange={(e) => setEditPayload(e.target.value)} /></div>
+              </div>
               <div className="space-y-2"><Label>Mercancía</Label><Input value={editMercancia} onChange={(e) => setEditMercancia(e.target.value)} /></div>
               <div className="space-y-2"><Label>Notas</Label><Input value={editNotas} onChange={(e) => setEditNotas(e.target.value)} /></div>
               <div className="flex items-center justify-between rounded-md border p-3">

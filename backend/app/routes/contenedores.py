@@ -64,6 +64,7 @@ def create_contenedor(current_user):
         estado_id=data.get("estado_id"),
         mercancia_peligrosa=data.get("mercancia_peligrosa", False),
         peso_kg=data.get("peso_kg"),
+        payload_kg=data.get("payload_kg"),
         mercancia=data.get("mercancia"),
         destino=data.get("destino"),
         destino_lat=data.get("destino_lat"),
@@ -106,7 +107,7 @@ def update_contenedor(current_user, contenedor_id):
     fields = [
         "matricula", "cliente_id", "tipo_iso", "origen", "origen_lat", "origen_lng",
         "destino", "destino_lat", "destino_lng",
-        "mercancia_peligrosa", "peso_kg", "mercancia", "notas",
+        "mercancia_peligrosa", "peso_kg", "payload_kg", "mercancia", "notas",
         "alquilado", "ubicacion_lat", "ubicacion_lng",
     ]
     for field in fields:

@@ -38,9 +38,16 @@ def create_app(config_class=Config):
     with app.app_context():
         from .models import user, cliente, estado, contenedor, movimiento, permiso, vista, grupo, adjunto
         db.create_all()
+        _migrate_schema()
         _seed_estados()
 
     return app
+
+
+def _migrate_schema():
+    """Add columns introduced after the initial release (create_all won't alter existing tables)."""
+    db.session.execute(db.text("ALTER TABLE contenedores ADD COLUMN IF NOT EXISTS payload_kg NUMERIC(10, 2)"))
+    db.session.commit()
 
 
 def _seed_estados():

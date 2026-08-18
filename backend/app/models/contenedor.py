@@ -16,6 +16,7 @@ class Contenedor(db.Model):
     estado_id = db.Column(db.Integer, db.ForeignKey("estados.id"), nullable=True)
     mercancia_peligrosa = db.Column(db.Boolean, default=False)
     peso_kg = db.Column(db.Numeric(10, 2))
+    payload_kg = db.Column(db.Numeric(10, 2))
     mercancia = db.Column(db.String(300))
     destino = db.Column(db.String(300))
     destino_lat = db.Column(db.Numeric(10, 7))
@@ -48,6 +49,7 @@ class Contenedor(db.Model):
             "estado": self.estado.to_dict() if self.estado else None,
             "mercancia_peligrosa": self.mercancia_peligrosa,
             "peso_kg": float(self.peso_kg) if self.peso_kg else None,
+            "payload_kg": float(self.payload_kg) if self.payload_kg else None,
             "mercancia": self.mercancia,
             "destino": self.destino,
             "destino_lat": float(self.destino_lat) if self.destino_lat else None,
