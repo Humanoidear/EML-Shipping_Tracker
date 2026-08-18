@@ -17,13 +17,15 @@ echo "=== [1/3] Pulling latest code ==="
 cd "$REPO_ROOT"
 git pull --ff-only
 
-echo "=== [2/3] Rebuilding & restarting services ==="
-docker compose -f docker-compose.prod.yml up -d --build
-
-echo "=== [3/3] Stopping legacy host Nginx (if any, to free port 80) ==="
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "^nginx"; then
+echo "=== [2/3] Freeing port 80 (stopping legacy host Nginx if present) ==="
+if command -v systemctl >/dev/null 2>&1; then
   systemctl disable --now nginx 2>/dev/null || true
 fi
+pkill -f "^nginx: master" 2>/dev/null || true
+sleep 1
+
+echo "=== [3/3] Rebuilding & restarting services ==="
+docker compose -f docker-compose.prod.yml up -d --build
 
 echo ""
 echo "=== Update complete ==="
