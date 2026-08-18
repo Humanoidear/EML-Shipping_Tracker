@@ -31,6 +31,7 @@ export default defineConfig({
           if (id.includes("node_modules/xlsx") || id.includes("node_modules/jspdf") || id.includes("node_modules/html2canvas")) return "excel-pdf";
           if (id.includes("node_modules/html5-qrcode") || id.includes("node_modules/qrcode.react")) return "qr";
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/react-router-dom") || id.includes("node_modules/axios")) return "react-vendor";
+          return "shared";
         },
       },
     },
