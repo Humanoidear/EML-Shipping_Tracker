@@ -1,71 +1,48 @@
 #!/usr/bin/env bash
 #
-# One-time VPS setup: install Nginx, build & install the web app, configure
-# the reverse proxy for the EML backend, open firewall ports 80/443, keep SSH (22) open.
+# One-time VPS setup for EML Shipping Tracker: install Docker, prepare .env,
+# start everything via Docker Compose (postgres + backend + frontend/nginx),
+# open firewall ports 80/443, keep SSH (22) open.
 #
-# Prerequisites: this script must run on the VPS from a checkout of the repo,
-# and the backend must already be running via `docker compose -f docker-compose.prod.yml up -d`.
-#
-# Usage on the VPS:
+# Usage on the VPS (from a checkout of the repo):
 #   sudo bash /path/to/EML-Shipping_Tracker/deploy/setup-vps.sh
 #
 set -e
 
-# Resolve paths from this script's own location (works regardless of
-# where the project was placed, e.g. /opt/EML-Shipping_Tracker).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONF_SRC="$SCRIPT_DIR/nginx-eml.conf"
-WEB_ROOT="/var/www/eml"
-NGINX_AVAILABLE="/etc/nginx/sites-available/eml"
-NGINX_ENABLED="/etc/nginx/sites-enabled/eml"
 
-echo "=== [1/6] Installing Nginx ==="
-if ! command -v nginx >/dev/null 2>&1; then
+echo "=== [1/4] Installing Docker ==="
+if ! command -v docker >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -y
-    apt-get install -y nginx
+    curl -fsSL https://get.docker.com | bash
   else
-    echo "ERROR: Nginx not found and apt-get not available. Install Nginx manually." >&2
+    echo "ERROR: Docker not found and apt-get not available. Install Docker manually." >&2
     exit 1
   fi
 fi
-nginx -v
-
-echo "=== [2/6] Installing config ==="
-if [ ! -f "$CONF_SRC" ]; then
-  echo "ERROR: $CONF_SRC not found." >&2
+docker --version
+if ! docker compose version >/dev/null 2>&1; then
+  echo "ERROR: Docker Compose plugin not available." >&2
   exit 1
 fi
-cp "$CONF_SRC" "$NGINX_AVAILABLE"
 
-# Remove the default site to avoid conflicts (it also listens on port 80).
-rm -f /etc/nginx/sites-enabled/default
-
-ln -sf "$NGINX_AVAILABLE" "$NGINX_ENABLED"
-
-echo "=== [3/6] Installing Node.js (for the frontend build) ==="
-if ! command -v node >/dev/null 2>&1; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
+echo "=== [2/4] Preparing .env ==="
+if [ ! -f "$REPO_ROOT/.env" ]; then
+  cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
+  echo "Created .env from .env.example — EDIT IT and set strong secrets:"
+  echo "  sed -i 's/change-me-to-a-random-string/$(openssl rand -hex 24)/' $REPO_ROOT/.env"
+  echo "  sed -i 's/change-me-to-another-random-string/$(openssl rand -hex 24)/' $REPO_ROOT/.env"
+else
+  echo ".env already exists, leaving it untouched."
 fi
-node -v
 
-echo "=== [4/6] Building & installing web app ==="
-mkdir -p "$WEB_ROOT"
-cd "$REPO_ROOT/frontend"
-npm ci
-npm run build
-cp -R dist/. "$WEB_ROOT/"
-echo "Web app installed at $WEB_ROOT"
+echo "=== [3/4] Building & starting services ==="
+cd "$REPO_ROOT"
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
 
-echo "=== [5/6] Testing & reloading Nginx ==="
-nginx -t
-systemctl enable nginx
-systemctl reload nginx
-systemctl status nginx --no-pager | head -5
-
-echo "=== [6/6] Firewall ==="
+echo "=== [4/4] Firewall ==="
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp || true
   ufw allow 80/tcp || true
@@ -78,8 +55,9 @@ fi
 echo ""
 echo "=== Setup complete ==="
 echo "Open the web app in a browser:   http://YOUR_VPS_IP/"
-echo "Test the API on the VPS:         curl -i http://127.0.0.1/api/auth/me"
-echo "Test the API from your Mac:      curl -i http://YOUR_VPS_IP/api/auth/me"
+echo "Test the API from the VPS:       curl -i http://127.0.0.1/api/auth/me"
+echo "Create the initial admin:        curl -X POST http://127.0.0.1/api/auth/seed-admin"
+echo "Update later:                    sudo bash deploy/update-vps.sh"
 echo ""
 echo "NOTE: this serves plain HTTP. For HTTPS you need a domain name"
 echo "      (Let's Encrypt does not issue certificates for raw IPs)."
