@@ -12,7 +12,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "=== [1/4] Installing Docker ==="
+echo "=== [1/5] Installing Docker ==="
 if ! command -v docker >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
     curl -fsSL https://get.docker.com | bash
@@ -27,7 +27,20 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "=== [2/4] Preparing .env ==="
+echo "=== [2/5] Adding 2G swap (frontend builds need more memory than 2GB VPSes have) ==="
+if ! swapon --show | grep -q .; then
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q "^/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  echo "Swap enabled."
+else
+  echo "Swap already present, skipping."
+fi
+swapon --show
+
+echo "=== [3/5] Preparing .env ==="
 if [ ! -f "$REPO_ROOT/.env" ]; then
   cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
   echo "Created .env from .env.example — EDIT IT and set strong secrets:"
@@ -37,12 +50,12 @@ else
   echo ".env already exists, leaving it untouched."
 fi
 
-echo "=== [3/4] Building & starting services ==="
+echo "=== [4/5] Building & starting services ==="
 cd "$REPO_ROOT"
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
 
-echo "=== [4/4] Firewall ==="
+echo "=== [5/5] Firewall ==="
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp || true
   ufw allow 80/tcp || true

@@ -1,6 +1,7 @@
 # Build stage: compile the React app
 FROM node:22-alpine AS build
 WORKDIR /app
+ENV NODE_OPTIONS=--max-old-space-size=1536
 COPY package*.json ./
 RUN npm ci
 COPY . .
