@@ -198,6 +198,18 @@ export default function ContenedorDetail() {
     return grupos.find((g) => g.contenedores.some((c) => c.id === numId)) || null;
   }, [grupos, contenedor]);
 
+  const handleRemoveFromGroup = useCallback(async (contId: number) => {
+    if (!containerGrupo) return;
+    if (!confirm("Eliminar este contenedor del grupo?")) return;
+    try {
+      await api.delete(`/grupos/${containerGrupo.id}/contenedores/${contId}`);
+      const grpRes = await api.get("/grupos");
+      setGrupos(grpRes.data);
+    } catch {
+      alert("Error al remover el contenedor del grupo");
+    }
+  }, [containerGrupo]);
+
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     const current = contenedorRef.current;
     if (!current) return;

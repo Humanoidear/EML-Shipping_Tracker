@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Ship, AlertTriangle, Layers, X } from "lucide-react";
+import { Ship, AlertTriangle, Layers, X, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Contenedor {
   id: number;
@@ -20,7 +21,7 @@ interface Grupo {
   contenedores: Contenedor[];
 }
 
-const MAX_VISIBLE = 4;
+const MAX_COLLAPSED = 4;
 
 export function GrupoCard({
   grupo,
@@ -32,9 +33,12 @@ export function GrupoCard({
   onClickOverride?: () => void;
 }) {
   const navigate = useNavigate();
-  const visible = grupo.contenedores.slice(0, MAX_VISIBLE);
-  const remaining = grupo.contenedores.length - MAX_VISIBLE;
+  const [expanded, setExpanded] = useState(false);
   const hasPeligrosa = grupo.contenedores.some((c) => c.mercancia_peligrosa);
+
+  const collapsed = grupo.contenedores.slice(0, MAX_COLLAPSED);
+  const hidden = grupo.contenedores.length - MAX_COLLAPSED;
+  const shown = expanded ? grupo.contenedores : collapsed;
 
   const handleRemove = (e: React.MouseEvent, contId: number) => {
     e.stopPropagation();
@@ -71,13 +75,13 @@ export function GrupoCard({
           </span>
         </div>
         <div className="space-y-1 rounded-md bg-background/50 p-1.5">
-          {visible.map((c) => (
-            <div key={c.id} className="flex items-center gap-1.5 text-[10px] group">
+          {shown.map((c) => (
+            <div key={c.id} className="flex items-center gap-1.5 text-[10px] group/item">
               <Ship className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
               <span className="font-mono truncate flex-1">{c.matricula}</span>
               {onRemoveContainer && (
                 <button
-                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0"
+                  className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0"
                   onClick={(e) => handleRemove(e, c.id)}
                   title="Remover del grupo"
                 >
@@ -87,8 +91,24 @@ export function GrupoCard({
               {c.mercancia_peligrosa && <AlertTriangle className="h-2.5 w-2.5 text-orange-500 shrink-0" />}
             </div>
           ))}
-          {remaining > 0 && (
-            <p className="text-[10px] text-muted-foreground pl-4">+{remaining} contenedores</p>
+
+          {!expanded && hidden > 0 && (
+            <button
+              className="flex w-full items-center justify-center gap-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+            >
+              <ChevronDown className="h-3 w-3" />
+              Ver +{hidden} contenedores
+            </button>
+          )}
+          {expanded && hidden > 0 && (
+            <button
+              className="flex w-full items-center justify-center gap-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+              onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+            >
+              <ChevronUp className="h-3 w-3" />
+              Mostrar menos
+            </button>
           )}
         </div>
       </div>
