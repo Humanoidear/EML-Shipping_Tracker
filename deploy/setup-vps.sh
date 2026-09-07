@@ -1,61 +1,77 @@
 #!/usr/bin/env bash
 #
-# One-time VPS setup for EML Shipping Tracker: install Docker, prepare .env,
-# start everything via Docker Compose (postgres + backend + frontend/nginx),
+# One-time VPS setup: build frontend, install Nginx, serve web app + API proxy,
 # open firewall ports 80/443, keep SSH (22) open.
 #
-# Usage on the VPS (from a checkout of the repo):
-#   sudo bash /path/to/EML-Shipping_Tracker/deploy/setup-vps.sh
+# Usage on the VPS (from the project root):
+#   sudo bash deploy/setup-vps.sh
 #
 set -e
 
+# Resolve project root from this script's own location.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONF_SRC="$SCRIPT_DIR/nginx-eml.conf"
+NGINX_AVAILABLE="/etc/nginx/sites-available/eml"
+NGINX_ENABLED="/etc/nginx/sites-enabled/eml"
+WEB_ROOT="/var/www/eml"
 
-echo "=== [1/5] Installing Docker ==="
-if ! command -v docker >/dev/null 2>&1; then
+echo "=== [1/6] Installing Node.js (if missing) ==="
+if ! command -v node >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
-    curl -fsSL https://get.docker.com | bash
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
   else
-    echo "ERROR: Docker not found and apt-get not available. Install Docker manually." >&2
+    echo "ERROR: Node.js not found and apt-get not available. Install Node 18+ manually." >&2
     exit 1
   fi
 fi
-docker --version
-if ! docker compose version >/dev/null 2>&1; then
-  echo "ERROR: Docker Compose plugin not available." >&2
+node -v
+
+echo "=== [2/6] Building frontend ==="
+cd "$PROJECT_ROOT/frontend"
+if [ ! -d node_modules ]; then
+  npm ci
+fi
+npm run build
+cd "$PROJECT_ROOT"
+
+echo "=== [3/6] Installing Nginx ==="
+if ! command -v nginx >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -y
+    apt-get install -y nginx
+  else
+    echo "ERROR: Nginx not found and apt-get not available. Install Nginx manually." >&2
+    exit 1
+  fi
+fi
+nginx -v
+
+echo "=== [4/6] Installing config + web app ==="
+if [ ! -f "$CONF_SRC" ]; then
+  echo "ERROR: $CONF_SRC not found." >&2
   exit 1
 fi
+cp "$CONF_SRC" "$NGINX_AVAILABLE"
 
-echo "=== [2/5] Adding 2G swap (frontend builds need more memory than 2GB VPSes have) ==="
-if ! swapon --show | grep -q .; then
-  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  grep -q "^/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
-  echo "Swap enabled."
-else
-  echo "Swap already present, skipping."
-fi
-swapon --show
+# Remove the default site to avoid conflicts (it also listens on port 80).
+rm -f /etc/nginx/sites-enabled/default
 
-echo "=== [3/5] Preparing .env ==="
-if [ ! -f "$REPO_ROOT/.env" ]; then
-  cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-  echo "Created .env from .env.example — EDIT IT and set strong secrets:"
-  echo "  sed -i 's/change-me-to-a-random-string/$(openssl rand -hex 24)/' $REPO_ROOT/.env"
-  echo "  sed -i 's/change-me-to-another-random-string/$(openssl rand -hex 24)/' $REPO_ROOT/.env"
-else
-  echo ".env already exists, leaving it untouched."
-fi
+ln -sf "$NGINX_AVAILABLE" "$NGINX_ENABLED"
 
-echo "=== [4/5] Building & starting services ==="
-cd "$REPO_ROOT"
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps
+# Deploy the static web app.
+mkdir -p "$WEB_ROOT"
+rm -rf "$WEB_ROOT"/*
+cp -r "$PROJECT_ROOT/frontend/dist/." "$WEB_ROOT/"
 
-echo "=== [5/5] Firewall ==="
+echo "=== [5/6] Testing config + reloading Nginx ==="
+nginx -t
+systemctl enable nginx
+systemctl reload nginx
+systemctl status nginx --no-pager | head -5
+
+echo "=== [6/6] Firewall ==="
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp || true
   ufw allow 80/tcp || true
@@ -67,10 +83,8 @@ fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Open the web app in a browser:   http://YOUR_VPS_IP/"
-echo "Test the API from the VPS:       curl -i http://127.0.0.1/api/auth/me"
-echo "Create the initial admin:        curl -X POST http://127.0.0.1/api/auth/seed-admin"
-echo "Update later:                    sudo bash deploy/update-vps.sh"
+echo "Web app:   http://YOUR_VPS_IP"
+echo "API:       http://YOUR_VPS_IP/api"
 echo ""
-echo "NOTE: this serves plain HTTP. For HTTPS you need a domain name"
-echo "      (Let's Encrypt does not issue certificates for raw IPs)."
+echo "Test locally on the VPS:   curl -i http://127.0.0.1/api/auth/me"
+echo "Test from your Mac:        curl -i http://YOUR_VPS_IP/api/auth/me"

@@ -227,6 +227,8 @@ def add_movimiento(current_user, contenedor_id):
 def update_movimiento(current_user, contenedor_id, mov_id):
     movimiento = Movimiento.query.filter_by(id=mov_id, contenedor_id=contenedor_id).first_or_404()
     data = request.get_json()
+    if "estado_nuevo_id" in data and data["estado_nuevo_id"]:
+        movimiento.estado_nuevo_id = data["estado_nuevo_id"]
     if "ubicacion_lat" in data:
         movimiento.ubicacion_lat = data["ubicacion_lat"]
     if "ubicacion_lng" in data:
@@ -235,6 +237,18 @@ def update_movimiento(current_user, contenedor_id, mov_id):
         movimiento.notas = data["notas"]
     if "fecha" in data and data["fecha"]:
         movimiento.fecha = _parse_fecha(data["fecha"])
+
+    # Si el movimiento editado es el más reciente, mantener el estado y la
+    # ubicación del contenedor sincronizados.
+    latest = Movimiento.query.filter_by(contenedor_id=contenedor_id).order_by(Movimiento.fecha.desc()).first()
+    if latest and latest.id == movimiento.id:
+        contenedor = Contenedor.query.get(contenedor_id)
+        if contenedor:
+            contenedor.estado_id = movimiento.estado_nuevo_id
+            if movimiento.ubicacion_lat is not None:
+                contenedor.ubicacion_lat = movimiento.ubicacion_lat
+            if movimiento.ubicacion_lng is not None:
+                contenedor.ubicacion_lng = movimiento.ubicacion_lng
     db.session.commit()
     return jsonify(movimiento.to_dict())
 
@@ -244,6 +258,18 @@ def update_movimiento(current_user, contenedor_id, mov_id):
 def delete_movimiento(current_user, contenedor_id, mov_id):
     movimiento = Movimiento.query.filter_by(id=mov_id, contenedor_id=contenedor_id).first_or_404()
     db.session.delete(movimiento)
+    db.session.flush()
+
+    # Recalcular el estado del contenedor según el último movimiento restante
+    # (deshacer el movimiento si era el más reciente).
+    latest = Movimiento.query.filter_by(contenedor_id=contenedor_id).order_by(Movimiento.fecha.desc()).first()
+    contenedor = Contenedor.query.get(contenedor_id)
+    if contenedor and latest:
+        contenedor.estado_id = latest.estado_nuevo_id
+        if latest.ubicacion_lat is not None:
+            contenedor.ubicacion_lat = latest.ubicacion_lat
+        if latest.ubicacion_lng is not None:
+            contenedor.ubicacion_lng = latest.ubicacion_lng
     db.session.commit()
     return jsonify({"message": "Movimiento eliminado"})
 

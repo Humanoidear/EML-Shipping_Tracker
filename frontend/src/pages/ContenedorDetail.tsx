@@ -94,7 +94,7 @@ interface Contenedor {
 interface Movimiento {
   id: number;
   estado_anterior?: { nombre: string } | null;
-  estado_nuevo?: { nombre: string } | null;
+  estado_nuevo?: { id: number; nombre: string } | null;
   ubicacion_lat?: number;
   ubicacion_lng?: number;
   notas?: string;
@@ -165,6 +165,8 @@ export default function ContenedorDetail() {
   const [editPeligrosa, setEditPeligrosa] = useState(false);
   const [editAlquilado, setEditAlquilado] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
+  const [editingMovFull, setEditingMovFull] = useState<Movimiento | null>(null);
+  const [estados, setEstados] = useState<{ id: number; nombre: string; color: string }[]>([]);
 
   const fetchData = useCallback(() => {
     if (!id) return;
@@ -173,11 +175,13 @@ export default function ContenedorDetail() {
       api.get(`/contenedores/${id}/movimientos`),
       api.get(`/contenedores/${id}/tiempo-ruta`).catch(() => ({ data: null })),
       api.get("/grupos").catch(() => ({ data: [] })),
-    ]).then(([contRes, movRes, rutaRes, grpRes]) => {
+      api.get("/estados"),
+    ]).then(([contRes, movRes, rutaRes, grpRes, estRes]) => {
       setContenedor(contRes.data);
       setMovimientos(movRes.data);
       setTiempoRuta(rutaRes.data);
       setGrupos(grpRes.data);
+      setEstados(estRes.data);
     }).catch(console.error);
   }, [id]);
 
@@ -209,6 +213,26 @@ export default function ContenedorDetail() {
       alert("Error al remover el contenedor del grupo");
     }
   }, [containerGrupo]);
+
+  const handleEditMovimientoSave = useCallback(async (movId: number, estadoId: number, notas: string, fecha?: string) => {
+    await api.put(`/contenedores/${id}/movimientos/${movId}`, {
+      estado_nuevo_id: estadoId,
+      notas,
+      ...(fecha ? { fecha: new Date(fecha).toISOString() } : {}),
+    });
+    setEditingMovFull(null);
+    fetchData();
+  }, [id, fetchData]);
+
+  const handleDeleteMovimiento = useCallback(async (movId: number) => {
+    if (!confirm("¿Eliminar este movimiento? El estado del contenedor se deshará si era el más reciente.")) return;
+    try {
+      await api.delete(`/contenedores/${id}/movimientos/${movId}`);
+      fetchData();
+    } catch {
+      alert("Error al eliminar el movimiento");
+    }
+  }, [id, fetchData]);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     const current = contenedorRef.current;
@@ -925,6 +949,14 @@ export default function ContenedorDetail() {
                           {new Date(mov.created_at).toLocaleDateString("es-ES")} — {mov.username || "Sistema"}
                         </p>
                       </div>
+                      <div className="flex gap-1 self-start">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar movimiento" onClick={() => setEditingMovFull(mov)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Eliminar movimiento" onClick={() => handleDeleteMovimiento(mov.id)}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1036,6 +1068,15 @@ export default function ContenedorDetail() {
         <EditLocationDialog
           onSave={handleAddLocation}
           onClose={() => setShowAddLocation(false)}
+        />
+      )}
+
+      {editingMovFull && (
+        <EditMovimientoDialog
+          movimiento={editingMovFull}
+          estados={estados}
+          onSave={handleEditMovimientoSave}
+          onClose={() => setEditingMovFull(null)}
         />
       )}
     </div>
@@ -1441,5 +1482,83 @@ function CalendarPane({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function EditMovimientoDialog({
+  movimiento,
+  estados,
+  onSave,
+  onClose,
+}: {
+  movimiento: Movimiento;
+  estados: { id: number; nombre: string; color: string }[];
+  onSave: (movId: number, estadoId: number, notas: string, fecha?: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [estadoId, setEstadoId] = useState(movimiento.estado_nuevo?.id?.toString() || "");
+  const [notas, setNotas] = useState(movimiento.notas || "");
+  const [fecha, setFecha] = useState(
+    movimiento.fecha
+      ? new Date(movimiento.fecha).toISOString().slice(0, 16)
+      : movimiento.created_at
+        ? new Date(movimiento.created_at).toISOString().slice(0, 16)
+        : ""
+  );
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!estadoId) {
+      alert("Selecciona un estado");
+      return;
+    }
+    setLoading(true);
+    try {
+      await onSave(movimiento.id, parseInt(estadoId, 10), notas, fecha || undefined);
+    } catch (err) {
+      console.error("Edit movimiento error:", err);
+      alert("Error al guardar el movimiento");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Editar Movimiento</DialogTitle>
+          <DialogDescription>
+            Si es el movimiento más reciente, el estado del contenedor se actualizará.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Estado nuevo *</Label>
+            <Select value={estadoId} onValueChange={setEstadoId}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+              <SelectContent>
+                {estados.map((e) => (
+                  <SelectItem key={e.id} value={e.id.toString()}>{e.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Notas</Label>
+            <Input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Opcional" />
+          </div>
+          <div className="space-y-2">
+            <Label>Fecha</Label>
+            <Input type="datetime-local" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={loading}>Guardar</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

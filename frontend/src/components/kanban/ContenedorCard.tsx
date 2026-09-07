@@ -39,7 +39,7 @@ export function ContenedorCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0 : 1,
   };
 
   return (
@@ -49,7 +49,7 @@ export function ContenedorCard({
       {...listeners}
       className={cn(
         "relative cursor-grab active:cursor-grabbing touch-none rounded-md border bg-card p-3 shadow-sm transition-shadow hover:shadow-md select-none",
-        isDragging && "opacity-50",
+        isDragging && "opacity-0",
         isGroupTarget && "border-primary ring-2 ring-primary bg-primary/5",
         contenedor.mercancia_peligrosa && "border-orange-500"
       )}

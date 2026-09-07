@@ -7,7 +7,7 @@ import { KanbanColumn } from "./KanbanColumn";
 import { ContenedorCard } from "./ContenedorCard";
 import { MovimientoDialog } from "./MovimientoDialog";
 import api from "@/lib/api";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, Ship, AlertTriangle, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -428,17 +428,53 @@ export function KanbanBoard({ filters, selectionMode, selectedIds, onToggleSelec
           </div>
         </div>
 
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay dropAnimation={null} style={{ zIndex: 999 }}>
           {activeDragId?.startsWith("group-") && grupos.find((g) => `group-${g.id}` === activeDragId) ? (
-            <div className="w-72 rounded-md border bg-card shadow-lg ring-1 ring-primary">
-              <GrupoCardPreview grupo={grupos.find((g) => `group-${g.id}` === activeDragId)!} />
+            <div className="w-72 rounded-md border-2 border-dashed border-primary bg-card p-3 shadow-2xl">
+              <div className="flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-bold">{grupos.find((g) => `group-${g.id}` === activeDragId)!.nombre}</span>
+                <span className="ml-auto rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {grupos.find((g) => `group-${g.id}` === activeDragId)!.contenedores.length}
+                </span>
+              </div>
+              <div className="mt-2 space-y-1 rounded-md bg-background/50 p-1.5">
+                {grupos.find((g) => `group-${g.id}` === activeDragId)!.contenedores.slice(0, 4).map((c) => (
+                  <div key={c.id} className="flex items-center gap-1.5 text-[10px]">
+                    <Ship className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    <span className="font-mono truncate">{c.matricula}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : activeDragCont ? (
-            <div className="rounded-md border bg-card p-3 shadow-lg ring-1 ring-primary w-72">
-              <div className="font-mono text-sm font-bold">{activeDragCont.matricula}</div>
+            <div className="w-72 rounded-md border-2 border-primary bg-card p-3 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Ship className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-mono text-base font-bold">{activeDragCont.matricula}</span>
+                </div>
+                {activeDragCont.mercancia_peligrosa && <AlertTriangle className="h-4 w-4 text-orange-500" />}
+              </div>
               {activeDragCont.cliente && (
-                <div className="text-xs text-muted-foreground">{activeDragCont.cliente.nombre}</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{activeDragCont.cliente.nombre}</p>
               )}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {activeDragCont.tipo_iso && <span>{activeDragCont.tipo_iso}</span>}
+                {activeDragCont.peso_kg != null && <span>{activeDragCont.peso_kg} kg</span>}
+                {activeDragCont.destino && <span>{activeDragCont.destino}</span>}
+              </div>
+              {(() => {
+                const est = estados.find((e) => e.id === activeDragCont.estado_id);
+                return est ? (
+                  <span
+                    className="mt-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                    style={{ backgroundColor: est.color }}
+                  >
+                    {est.nombre}
+                  </span>
+                ) : null;
+              })()}
             </div>
           ) : null}
         </DragOverlay>
@@ -575,17 +611,6 @@ function TrashDropZone({ active }: { active: boolean }) {
       <div className="flex items-center gap-2 text-sm">
         <Trash2 className="h-5 w-5" />
         <span>Soltar aquí para eliminar</span>
-      </div>
-    </div>
-  );
-}
-
-function GrupoCardPreview({ grupo }: { grupo: Grupo }) {
-  return (
-    <div className="rounded-md border-2 border-dashed bg-card p-3">
-      <div className="text-sm font-bold">{grupo.nombre}</div>
-      <div className="mt-1 text-xs text-muted-foreground">
-        {grupo.contenedores.length} contenedores
       </div>
     </div>
   );
