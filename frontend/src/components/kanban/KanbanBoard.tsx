@@ -601,7 +601,7 @@ function TrashDropZone({ active }: { active: boolean }) {
     <div
       ref={setNodeRef}
       className={cn(
-        "fixed left-0 right-0 top-14 z-50 mx-4 flex h-14 items-center justify-center rounded-lg border-2 border-dashed px-6 transition-opacity duration-200 backdrop-blur-sm",
+        "fixed bottom-4 left-0 right-0 z-50 mx-4 flex h-14 items-center justify-center rounded-lg border-2 border-dashed px-6 transition-opacity duration-200 backdrop-blur-sm",
         active ? "opacity-100" : "pointer-events-none opacity-0",
         isOver
           ? "border-destructive bg-destructive/20 text-destructive shadow-lg"

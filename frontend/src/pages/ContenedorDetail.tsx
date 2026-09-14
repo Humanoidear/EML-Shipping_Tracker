@@ -19,7 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Ship, User, Box, Scale, AlertTriangle, MapPin,
-  Calendar, FileText, Pencil, Trash2, Plus, GripVertical,
+  Calendar, FileText, Pencil, Trash2, Plus, GripVertical, X,
   Camera, Paperclip, FileSpreadsheet, Layers, Clock, Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -813,7 +813,18 @@ export default function ContenedorDetail() {
                               {c.matricula}
                             </Link>
                             {c.id === contenedor.id && (
-                              <span className="text-[10px] text-primary">(actual)</span>
+                              <>
+                                <span className="text-[10px] text-primary">(actual)</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="ml-auto h-6 w-6"
+                                  title="Remover del grupo"
+                                  onClick={() => handleRemoveFromGroup(contenedor.id)}
+                                >
+                                  <X className="h-3 w-3 text-destructive" />
+                                </Button>
+                              </>
                             )}
                             {c.mercancia_peligrosa && (
                               <AlertTriangle className="h-3 w-3 text-orange-500" />
